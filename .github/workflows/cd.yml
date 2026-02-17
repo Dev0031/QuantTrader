@@ -1,8 +1,9 @@
-name: CD
+name: CD - Deploy to Azure
 
+# TRIGGERS: Only when code is merged/pushed to master
 on:
   push:
-    branches: [main]
+    branches: [master]
   workflow_dispatch:
     inputs:
       environment:
@@ -19,30 +20,48 @@ env:
   AKS_CLUSTER_NAME: ${{ secrets.AKS_CLUSTER_NAME }}
   AKS_RESOURCE_GROUP: ${{ secrets.AKS_RESOURCE_GROUP }}
   NAMESPACE: quanttrader
+  DOTNET_VERSION: "8.0.x"
 
 jobs:
-  # -----------------------------------------------------------------------
-  # Wait for CI to pass before deploying
-  # -----------------------------------------------------------------------
-  ci-check:
-    name: Verify CI
+  # ---------------------------------------------------------------------------
+  # Step 1: Build & Test (gate - must pass before any deployment)
+  # ---------------------------------------------------------------------------
+  build-and-test:
+    name: Build & Test Gate
     runs-on: ubuntu-latest
     steps:
-      - name: Wait for CI workflow
-        uses: lewagon/wait-on-check-action@v1.3.4
-        with:
-          ref: ${{ github.sha }}
-          check-name: "Build & Test"
-          repo-token: ${{ secrets.GITHUB_TOKEN }}
-          wait-interval: 15
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
-  # -----------------------------------------------------------------------
-  # Build and push Docker images
-  # -----------------------------------------------------------------------
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - name: Cache NuGet packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.nuget/packages
+          key: ${{ runner.os }}-nuget-${{ hashFiles('**/*.csproj') }}
+          restore-keys: |
+            ${{ runner.os }}-nuget-
+
+      - name: Restore dependencies
+        run: dotnet restore QuantTrader.sln
+
+      - name: Build
+        run: dotnet build QuantTrader.sln --configuration Release --no-restore
+
+      - name: Run tests
+        run: dotnet test QuantTrader.sln --configuration Release --no-build
+
+  # ---------------------------------------------------------------------------
+  # Step 2: Build Docker images and push to Azure Container Registry
+  # ---------------------------------------------------------------------------
   build-images:
-    name: Build & Push Images
+    name: Build & Push Docker Images
     runs-on: ubuntu-latest
-    needs: ci-check
+    needs: build-and-test
     strategy:
       matrix:
         service:
@@ -101,9 +120,9 @@ jobs:
           docker push ${{ steps.tag.outputs.full_tag }}
           docker push ${{ steps.tag.outputs.latest_tag }}
 
-  # -----------------------------------------------------------------------
-  # Deploy to AKS
-  # -----------------------------------------------------------------------
+  # ---------------------------------------------------------------------------
+  # Step 3: Deploy to Azure Kubernetes Service (AKS)
+  # ---------------------------------------------------------------------------
   deploy:
     name: Deploy to AKS (${{ github.event.inputs.environment || 'staging' }})
     runs-on: ubuntu-latest
@@ -160,6 +179,9 @@ jobs:
 
       - name: Verify deployment
         run: |
+          echo "=== Pods ==="
           kubectl get pods -n ${{ env.NAMESPACE }}
+          echo "=== Services ==="
           kubectl get svc -n ${{ env.NAMESPACE }}
+          echo "=== Ingress ==="
           kubectl get ingress -n ${{ env.NAMESPACE }}
