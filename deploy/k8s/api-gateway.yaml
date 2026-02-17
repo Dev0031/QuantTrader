@@ -10,7 +10,7 @@ metadata:
   annotations:
     description: "API Gateway - unified entry point for REST and SignalR WebSocket traffic"
 spec:
-  replicas: 2
+  replicas: 1
   selector:
     matchLabels:
       app.kubernetes.io/name: api-gateway
@@ -27,7 +27,7 @@ spec:
     spec:
       containers:
         - name: api-gateway
-          image: quanttrader.azurecr.io/api-gateway:latest
+          image: quanttraderacr0031.azurecr.io/api-gateway:latest
           imagePullPolicy: Always
           ports:
             - containerPort: 8080
@@ -48,17 +48,17 @@ spec:
               valueFrom:
                 secretKeyRef:
                   name: quanttrader-secrets
-                  key: DB_PASSWORD
+                  key: db-password
             - name: RABBITMQ_PASSWORD
               valueFrom:
                 secretKeyRef:
                   name: quanttrader-secrets
-                  key: RABBITMQ_PASSWORD
+                  key: rabbitmq-password
             - name: JWT_SECRET
               valueFrom:
                 secretKeyRef:
                   name: quanttrader-secrets
-                  key: JWT_SECRET
+                  key: jwt-secret
           livenessProbe:
             httpGet:
               path: /health/live

@@ -7,19 +7,19 @@ metadata:
     app.kubernetes.io/name: quanttrader
     app.kubernetes.io/part-of: quanttrader
 data:
-  # Database
-  ConnectionStrings__DefaultConnection: "Host=postgres-svc;Port=5432;Database=quanttrader;Username=quanttrader;Password=REPLACE_VIA_SECRET;SSL Mode=Prefer"
-  ConnectionStrings__TimescaleDb: "Host=postgres-svc;Port=5432;Database=quanttrader;Username=quanttrader;Password=REPLACE_VIA_SECRET;SSL Mode=Prefer"
+  # Database connection strings (multiple key aliases for different services)
+  ConnectionStrings__DefaultConnection: "Host=postgres-svc;Port=5432;Database=quanttrader;Username=quanttrader;Password=devpassword123;SSL Mode=Prefer"
+  ConnectionStrings__TimescaleDb: "Host=postgres-svc;Port=5432;Database=quanttrader;Username=quanttrader;Password=devpassword123;SSL Mode=Prefer"
+  ConnectionStrings__PostgreSQL: "Host=postgres-svc;Port=5432;Database=quanttrader;Username=quanttrader;Password=devpassword123;SSL Mode=Prefer"
+  ConnectionStrings__TradingDb: "Host=postgres-svc;Port=5432;Database=quanttrader;Username=quanttrader;Password=devpassword123;SSL Mode=Prefer"
+  ConnectionStrings__Redis: "redis-svc:6379,abortConnect=false,connectTimeout=5000"
 
   # Redis
   Redis__ConnectionString: "redis-svc:6379,abortConnect=false,connectTimeout=5000"
   Redis__InstanceName: "quanttrader:"
 
-  # RabbitMQ
-  RabbitMq__Host: "rabbitmq-svc"
-  RabbitMq__Port: "5672"
-  RabbitMq__VirtualHost: "/"
-  RabbitMq__Username: "quanttrader"
+  # Event Bus - use in-memory for initial deployment
+  EventBus__UseInMemory: "true"
 
   # Service discovery (internal Kubernetes DNS)
   Services__DataIngestion: "http://data-ingestion-svc:8080"
@@ -27,6 +27,11 @@ data:
   Services__RiskManager: "http://risk-manager-svc:8080"
   Services__ExecutionEngine: "http://execution-engine-svc:8080"
   Services__ApiGateway: "http://api-gateway-svc:8080"
+
+  # Binance (testnet)
+  Binance__UseTestnet: "true"
+  Binance__RestBaseUrl: "https://testnet.binance.vision"
+  Binance__WebSocketUrl: "wss://testnet.binance.vision/ws"
 
   # Observability
   Prometheus__Enabled: "true"

@@ -1,5 +1,6 @@
 using Serilog;
 using QuantTrader.Common.Configuration;
+using QuantTrader.Infrastructure.Messaging;
 using QuantTrader.StrategyEngine.Configuration;
 using QuantTrader.StrategyEngine.Services;
 using QuantTrader.StrategyEngine.Strategies;
@@ -13,11 +14,12 @@ try
 {
     Log.Information("Starting StrategyEngine service");
 
-    var builder = Host.CreateApplicationBuilder(args);
+    var builder = WebApplication.CreateBuilder(args);
 
-    // Configure Serilog from appsettings
-    builder.Services.AddSerilog(config => config
-        .ReadFrom.Configuration(builder.Configuration));
+    // Configure Serilog
+    builder.Host.UseSerilog((context, services, config) =>
+        config.ReadFrom.Configuration(context.Configuration)
+              .ReadFrom.Services(services));
 
     // Bind configuration sections
     builder.Services.Configure<StrategySettings>(
@@ -37,6 +39,9 @@ try
     builder.Services.AddSingleton<IStrategy, MeanReversionStrategy>();
     builder.Services.AddSingleton<IStrategy, BreakoutStrategy>();
 
+    // Event bus
+    builder.Services.AddSingleton<IEventBus, InMemoryEventBus>();
+
     // Register services
     builder.Services.AddSingleton<IStrategyManager, StrategyManager>();
     builder.Services.AddSingleton<CandleAggregator>();
@@ -51,11 +56,20 @@ try
         .AddCheck("ready", () => Microsoft.Extensions.Diagnostics.HealthChecks.HealthCheckResult.Healthy(),
             tags: ["ready"]);
 
-    var host = builder.Build();
+    var app = builder.Build();
 
-    // Map health check endpoints (requires WebApplication, but for Worker SDK we log availability)
-    // For a Worker service, health checks are typically exposed via a minimal Kestrel endpoint:
-    host.Run();
+    app.UseSerilogRequestLogging();
+
+    app.MapHealthChecks("/health/live", new Microsoft.AspNetCore.Diagnostics.HealthChecks.HealthCheckOptions
+    {
+        Predicate = _ => false
+    });
+    app.MapHealthChecks("/health/ready", new Microsoft.AspNetCore.Diagnostics.HealthChecks.HealthCheckOptions
+    {
+        Predicate = _ => true
+    });
+
+    app.Run();
 }
 catch (Exception ex)
 {

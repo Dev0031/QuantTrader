@@ -10,7 +10,7 @@ metadata:
   annotations:
     description: "React trading dashboard served via Nginx"
 spec:
-  replicas: 2
+  replicas: 1
   selector:
     matchLabels:
       app.kubernetes.io/name: dashboard
@@ -23,7 +23,7 @@ spec:
     spec:
       containers:
         - name: dashboard
-          image: quanttrader.azurecr.io/dashboard:latest
+          image: quanttraderacr0031.azurecr.io/dashboard:latest
           imagePullPolicy: Always
           ports:
             - containerPort: 80
