@@ -1,0 +1,26 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>QuantTrader.DataIngestion</RootNamespace>
+    <UserSecretsId>dotnet-DataIngestion-455a4add-3c0d-4fca-bef9-1862b2fd661c</UserSecretsId>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.Hosting" Version="8.0.1" />
+    <PackageReference Include="System.Reactive" Version="6.0.*" />
+    <PackageReference Include="Websocket.Client" Version="5.1.*" />
+    <PackageReference Include="Microsoft.Extensions.Http" Version="8.0.*" />
+    <PackageReference Include="Serilog.AspNetCore" Version="8.0.*" />
+    <PackageReference Include="AspNetCore.HealthChecks.NpgSql" Version="8.0.*" />
+    <PackageReference Include="AspNetCore.HealthChecks.Redis" Version="8.0.*" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../../Shared/QuantTrader.Common/QuantTrader.Common.csproj" />
+    <ProjectReference Include="../../Shared/QuantTrader.Infrastructure/QuantTrader.Infrastructure.csproj" />
+  </ItemGroup>
+
+</Project>

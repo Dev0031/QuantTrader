@@ -1,0 +1,154 @@
+# =============================================================================
+# Global settings
+# =============================================================================
+global:
+  image:
+    registry: quanttrader.azurecr.io
+    tag: latest
+    pullPolicy: Always
+  namespace: quanttrader
+
+# =============================================================================
+# Per-service configuration
+# =============================================================================
+services:
+  dataIngestion:
+    name: data-ingestion
+    replicaCount: 1
+    image:
+      repository: data-ingestion
+    resources:
+      requests:
+        memory: "128Mi"
+        cpu: "250m"
+      limits:
+        memory: "256Mi"
+        cpu: "500m"
+    port: 8080
+
+  strategyEngine:
+    name: strategy-engine
+    replicaCount: 1
+    image:
+      repository: strategy-engine
+    resources:
+      requests:
+        memory: "128Mi"
+        cpu: "250m"
+      limits:
+        memory: "512Mi"
+        cpu: "1000m"
+    port: 8080
+
+  riskManager:
+    name: risk-manager
+    replicaCount: 1
+    image:
+      repository: risk-manager
+    resources:
+      requests:
+        memory: "128Mi"
+        cpu: "250m"
+      limits:
+        memory: "256Mi"
+        cpu: "500m"
+    port: 8080
+
+  executionEngine:
+    name: execution-engine
+    replicaCount: 1
+    image:
+      repository: execution-engine
+    resources:
+      requests:
+        memory: "128Mi"
+        cpu: "250m"
+      limits:
+        memory: "256Mi"
+        cpu: "500m"
+    port: 8080
+
+  apiGateway:
+    name: api-gateway
+    replicaCount: 2
+    image:
+      repository: api-gateway
+    resources:
+      requests:
+        memory: "128Mi"
+        cpu: "250m"
+      limits:
+        memory: "256Mi"
+        cpu: "500m"
+    port: 8080
+    servicePort: 80
+
+  dashboard:
+    name: dashboard
+    replicaCount: 2
+    image:
+      repository: dashboard
+    resources:
+      requests:
+        memory: "64Mi"
+        cpu: "100m"
+      limits:
+        memory: "128Mi"
+        cpu: "250m"
+    port: 80
+
+# =============================================================================
+# Ingress
+# =============================================================================
+ingress:
+  enabled: true
+  className: nginx
+  host: quanttrader.local
+  tls:
+    enabled: true
+    secretName: quanttrader-tls
+  annotations:
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "3600"
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+
+# =============================================================================
+# Database
+# =============================================================================
+database:
+  host: postgres-svc
+  port: 5432
+  name: quanttrader
+  user: quanttrader
+  # Password is injected via secret; this template is for connection string construction
+  connectionStringTemplate: "Host={{ .host }};Port={{ .port }};Database={{ .name }};Username={{ .user }};Password=$(DB_PASSWORD);SSL Mode=Prefer"
+
+# =============================================================================
+# Redis
+# =============================================================================
+redis:
+  host: redis-svc
+  port: 6379
+  connectionString: "redis-svc:6379,abortConnect=false,connectTimeout=5000"
+  instanceName: "quanttrader:"
+
+# =============================================================================
+# RabbitMQ
+# =============================================================================
+rabbitmq:
+  host: rabbitmq-svc
+  port: 5672
+  virtualHost: "/"
+  user: quanttrader
+
+# =============================================================================
+# Observability
+# =============================================================================
+prometheus:
+  enabled: true
+  scrapeInterval: "15s"
+
+logging:
+  defaultLevel: Information
+  microsoftLevel: Warning

@@ -1,0 +1,10 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: quanttrader
+  labels:
+    app.kubernetes.io/name: quanttrader
+    app.kubernetes.io/part-of: quanttrader
+    app.kubernetes.io/managed-by: kubectl
+  annotations:
+    description: "QuantTrader crypto trading bot platform"

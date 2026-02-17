@@ -1,0 +1,108 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: execution-engine
+  namespace: quanttrader
+  labels:
+    app.kubernetes.io/name: execution-engine
+    app.kubernetes.io/part-of: quanttrader
+    app.kubernetes.io/component: service
+  annotations:
+    description: "Order execution engine - manages order lifecycle on exchanges"
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: execution-engine
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: execution-engine
+        app.kubernetes.io/part-of: quanttrader
+        app.kubernetes.io/component: service
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8080"
+        prometheus.io/path: "/metrics"
+    spec:
+      containers:
+        - name: execution-engine
+          image: quanttrader.azurecr.io/execution-engine:latest
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 8080
+              protocol: TCP
+              name: http
+          resources:
+            requests:
+              memory: "128Mi"
+              cpu: "250m"
+            limits:
+              memory: "256Mi"
+              cpu: "500m"
+          envFrom:
+            - configMapRef:
+                name: quanttrader-config
+          env:
+            - name: DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: quanttrader-secrets
+                  key: DB_PASSWORD
+            - name: RABBITMQ_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: quanttrader-secrets
+                  key: RABBITMQ_PASSWORD
+            - name: EXCHANGE_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: quanttrader-secrets
+                  key: EXCHANGE_API_KEY
+            - name: EXCHANGE_API_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: quanttrader-secrets
+                  key: EXCHANGE_API_SECRET
+          livenessProbe:
+            httpGet:
+              path: /health/live
+              port: http
+            initialDelaySeconds: 15
+            periodSeconds: 20
+            timeoutSeconds: 5
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /health/ready
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          startupProbe:
+            httpGet:
+              path: /health/live
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            failureThreshold: 12
+      restartPolicy: Always
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: execution-engine-svc
+  namespace: quanttrader
+  labels:
+    app.kubernetes.io/name: execution-engine
+    app.kubernetes.io/part-of: quanttrader
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: execution-engine
+  ports:
+    - port: 8080
+      targetPort: http
+      protocol: TCP
+      name: http

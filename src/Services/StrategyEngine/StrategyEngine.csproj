@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk.Worker">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <UserSecretsId>dotnet-StrategyEngine-a1b2da57-4354-431a-a7e0-ffe593af9196</UserSecretsId>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.Hosting" Version="8.0.1" />
+    <PackageReference Include="Serilog.AspNetCore" Version="8.0.*" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../../Shared/QuantTrader.Common/QuantTrader.Common.csproj" />
+    <ProjectReference Include="../../Shared/QuantTrader.Infrastructure/QuantTrader.Infrastructure.csproj" />
+    <ProjectReference Include="../../Shared/QuantTrader.Indicators/QuantTrader.Indicators.csproj" />
+  </ItemGroup>
+
+</Project>

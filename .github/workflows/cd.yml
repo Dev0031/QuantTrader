@@ -1,0 +1,165 @@
+name: CD
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: "Deployment environment"
+        required: true
+        default: "staging"
+        type: choice
+        options:
+          - staging
+          - production
+
+env:
+  ACR_REGISTRY: ${{ secrets.ACR_REGISTRY }}
+  AKS_CLUSTER_NAME: ${{ secrets.AKS_CLUSTER_NAME }}
+  AKS_RESOURCE_GROUP: ${{ secrets.AKS_RESOURCE_GROUP }}
+  NAMESPACE: quanttrader
+
+jobs:
+  # -----------------------------------------------------------------------
+  # Wait for CI to pass before deploying
+  # -----------------------------------------------------------------------
+  ci-check:
+    name: Verify CI
+    runs-on: ubuntu-latest
+    steps:
+      - name: Wait for CI workflow
+        uses: lewagon/wait-on-check-action@v1.3.4
+        with:
+          ref: ${{ github.sha }}
+          check-name: "Build & Test"
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+          wait-interval: 15
+
+  # -----------------------------------------------------------------------
+  # Build and push Docker images
+  # -----------------------------------------------------------------------
+  build-images:
+    name: Build & Push Images
+    runs-on: ubuntu-latest
+    needs: ci-check
+    strategy:
+      matrix:
+        service:
+          - name: data-ingestion
+            project: DataIngestion
+            dockerfile: deploy/docker/Dockerfile.service
+            context: "."
+          - name: strategy-engine
+            project: StrategyEngine
+            dockerfile: deploy/docker/Dockerfile.service
+            context: "."
+          - name: risk-manager
+            project: RiskManager
+            dockerfile: deploy/docker/Dockerfile.service
+            context: "."
+          - name: execution-engine
+            project: ExecutionEngine
+            dockerfile: deploy/docker/Dockerfile.service
+            context: "."
+          - name: api-gateway
+            project: ApiGateway
+            dockerfile: deploy/docker/Dockerfile.service
+            context: "."
+          - name: dashboard
+            project: dashboard
+            dockerfile: deploy/docker/Dockerfile.dashboard
+            context: ./dashboard
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Login to Azure Container Registry
+        uses: azure/docker-login@v2
+        with:
+          login-server: ${{ env.ACR_REGISTRY }}
+          username: ${{ secrets.ACR_USERNAME }}
+          password: ${{ secrets.ACR_PASSWORD }}
+
+      - name: Set image tag
+        id: tag
+        run: |
+          SHORT_SHA=$(echo "${{ github.sha }}" | cut -c1-7)
+          echo "sha_tag=${SHORT_SHA}" >> "$GITHUB_OUTPUT"
+          echo "full_tag=${{ env.ACR_REGISTRY }}/${{ matrix.service.name }}:${SHORT_SHA}" >> "$GITHUB_OUTPUT"
+          echo "latest_tag=${{ env.ACR_REGISTRY }}/${{ matrix.service.name }}:latest" >> "$GITHUB_OUTPUT"
+
+      - name: Build and push Docker image
+        run: |
+          docker build \
+            --build-arg SERVICE_NAME=${{ matrix.service.project }} \
+            -f ${{ matrix.service.dockerfile }} \
+            -t ${{ steps.tag.outputs.full_tag }} \
+            -t ${{ steps.tag.outputs.latest_tag }} \
+            ${{ matrix.service.context }}
+
+          docker push ${{ steps.tag.outputs.full_tag }}
+          docker push ${{ steps.tag.outputs.latest_tag }}
+
+  # -----------------------------------------------------------------------
+  # Deploy to AKS
+  # -----------------------------------------------------------------------
+  deploy:
+    name: Deploy to AKS (${{ github.event.inputs.environment || 'staging' }})
+    runs-on: ubuntu-latest
+    needs: build-images
+    environment: ${{ github.event.inputs.environment || 'staging' }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Azure Login
+        uses: azure/login@v2
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Set AKS context
+        uses: azure/aks-set-context@v4
+        with:
+          cluster-name: ${{ env.AKS_CLUSTER_NAME }}
+          resource-group: ${{ env.AKS_RESOURCE_GROUP }}
+
+      - name: Set image tag
+        id: tag
+        run: |
+          SHORT_SHA=$(echo "${{ github.sha }}" | cut -c1-7)
+          echo "sha_tag=${SHORT_SHA}" >> "$GITHUB_OUTPUT"
+
+      - name: Deploy namespace and config
+        run: |
+          kubectl apply -f deploy/k8s/namespace.yaml
+          kubectl apply -f deploy/k8s/configmap.yaml
+          kubectl apply -f deploy/k8s/secrets.yaml
+
+      - name: Deploy services
+        run: |
+          SERVICES=(data-ingestion strategy-engine risk-manager execution-engine api-gateway dashboard)
+          for SVC in "${SERVICES[@]}"; do
+            kubectl apply -f "deploy/k8s/${SVC}.yaml"
+            kubectl set image "deployment/${SVC}" \
+              "${SVC}=${{ env.ACR_REGISTRY }}/${SVC}:${{ steps.tag.outputs.sha_tag }}" \
+              -n ${{ env.NAMESPACE }}
+          done
+
+      - name: Deploy ingress
+        run: kubectl apply -f deploy/k8s/ingress.yaml
+
+      - name: Wait for rollouts
+        run: |
+          SERVICES=(data-ingestion strategy-engine risk-manager execution-engine api-gateway dashboard)
+          for SVC in "${SERVICES[@]}"; do
+            kubectl rollout status "deployment/${SVC}" \
+              -n ${{ env.NAMESPACE }} \
+              --timeout=300s
+          done
+
+      - name: Verify deployment
+        run: |
+          kubectl get pods -n ${{ env.NAMESPACE }}
+          kubectl get svc -n ${{ env.NAMESPACE }}
+          kubectl get ingress -n ${{ env.NAMESPACE }}

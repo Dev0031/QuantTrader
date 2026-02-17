@@ -1,0 +1,55 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  scrape_timeout: 10s
+
+scrape_configs:
+  # -------------------------------------------------------------------
+  # Prometheus self-monitoring
+  # -------------------------------------------------------------------
+  - job_name: "prometheus"
+    static_configs:
+      - targets: ["localhost:9090"]
+
+  # -------------------------------------------------------------------
+  # QuantTrader .NET Services
+  # -------------------------------------------------------------------
+  - job_name: "data-ingestion"
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["data-ingestion:8080"]
+        labels:
+          service: "data-ingestion"
+          team: "quanttrader"
+
+  - job_name: "strategy-engine"
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["strategy-engine:8080"]
+        labels:
+          service: "strategy-engine"
+          team: "quanttrader"
+
+  - job_name: "risk-manager"
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["risk-manager:8080"]
+        labels:
+          service: "risk-manager"
+          team: "quanttrader"
+
+  - job_name: "execution-engine"
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["execution-engine:8080"]
+        labels:
+          service: "execution-engine"
+          team: "quanttrader"
+
+  - job_name: "api-gateway"
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["api-gateway:8080"]
+        labels:
+          service: "api-gateway"
+          team: "quanttrader"

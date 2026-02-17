@@ -1,0 +1,48 @@
+## .NET
+bin/
+obj/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+[Dd]ebug/
+[Rr]elease/
+x64/
+x86/
+[Bb]uild/
+bld/
+*.nupkg
+*.snupkg
+**/Properties/launchSettings.json
+
+## IDE
+.vs/
+.vscode/
+.idea/
+*.swp
+*.swo
+
+## Node/React
+dashboard/node_modules/
+dashboard/dist/
+dashboard/.env.local
+
+## Docker
+docker-compose.override.yml
+
+## Secrets
+*.pfx
+*.key
+appsettings.*.json
+!appsettings.json
+!appsettings.Development.json
+
+## OS
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+## Misc
+*.log
+*.tmp
+.claude/

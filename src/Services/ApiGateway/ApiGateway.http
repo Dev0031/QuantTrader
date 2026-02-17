@@ -1,0 +1,33 @@
+@ApiGateway_HostAddress = http://localhost:5071
+
+### Health - Liveness
+GET {{ApiGateway_HostAddress}}/health/live
+Accept: application/json
+
+### Health - Readiness
+GET {{ApiGateway_HostAddress}}/health/ready
+Accept: application/json
+
+### Dashboard Overview
+GET {{ApiGateway_HostAddress}}/api/dashboard/overview
+Accept: application/json
+
+### Market Prices
+GET {{ApiGateway_HostAddress}}/api/market/prices
+Accept: application/json
+
+### Open Positions
+GET {{ApiGateway_HostAddress}}/api/positions
+Accept: application/json
+
+### Trade History
+GET {{ApiGateway_HostAddress}}/api/trades?page=1&pageSize=20
+Accept: application/json
+
+### Strategies
+GET {{ApiGateway_HostAddress}}/api/strategies
+Accept: application/json
+
+### Risk Metrics
+GET {{ApiGateway_HostAddress}}/api/risk/metrics
+Accept: application/json

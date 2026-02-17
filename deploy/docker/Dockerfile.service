@@ -1,0 +1,72 @@
+# Multi-stage Dockerfile for QuantTrader .NET services
+# Usage: docker build --build-arg SERVICE_NAME=DataIngestion -f deploy/docker/Dockerfile.service .
+
+ARG SERVICE_NAME=DataIngestion
+
+# =============================================================================
+# Stage 1: Build
+# =============================================================================
+FROM mcr.microsoft.com/dotnet/sdk:8.0 AS build
+ARG SERVICE_NAME
+WORKDIR /src
+
+# Copy solution file and all project files first for layer caching
+COPY QuantTrader.sln ./
+COPY src/Shared/QuantTrader.Common/QuantTrader.Common.csproj src/Shared/QuantTrader.Common/
+COPY src/Shared/QuantTrader.Infrastructure/QuantTrader.Infrastructure.csproj src/Shared/QuantTrader.Infrastructure/
+COPY src/Shared/QuantTrader.Indicators/QuantTrader.Indicators.csproj src/Shared/QuantTrader.Indicators/
+COPY src/Services/DataIngestion/DataIngestion.csproj src/Services/DataIngestion/
+COPY src/Services/StrategyEngine/StrategyEngine.csproj src/Services/StrategyEngine/
+COPY src/Services/RiskManager/RiskManager.csproj src/Services/RiskManager/
+COPY src/Services/ExecutionEngine/ExecutionEngine.csproj src/Services/ExecutionEngine/
+COPY src/Services/ApiGateway/ApiGateway.csproj src/Services/ApiGateway/
+COPY tests/DataIngestion.Tests/DataIngestion.Tests.csproj tests/DataIngestion.Tests/
+COPY tests/StrategyEngine.Tests/StrategyEngine.Tests.csproj tests/StrategyEngine.Tests/
+COPY tests/RiskManager.Tests/RiskManager.Tests.csproj tests/RiskManager.Tests/
+COPY tests/ExecutionEngine.Tests/ExecutionEngine.Tests.csproj tests/ExecutionEngine.Tests/
+COPY tests/Indicators.Tests/Indicators.Tests.csproj tests/Indicators.Tests/
+COPY tests/Integration.Tests/Integration.Tests.csproj tests/Integration.Tests/
+
+# Restore dependencies (cached unless csproj files change)
+RUN dotnet restore
+
+# Copy all source code
+COPY src/ src/
+COPY tests/ tests/
+
+# Build and publish the target service
+RUN dotnet publish "src/Services/${SERVICE_NAME}/${SERVICE_NAME}.csproj" \
+    -c Release \
+    -o /app/publish \
+    --no-restore
+
+# =============================================================================
+# Stage 2: Runtime
+# =============================================================================
+FROM mcr.microsoft.com/dotnet/aspnet:8.0 AS runtime
+ARG SERVICE_NAME
+
+WORKDIR /app
+
+# Install curl for healthcheck
+RUN apt-get update && apt-get install -y --no-install-recommends curl && \
+    rm -rf /var/lib/apt/lists/*
+
+# Create non-root user for security
+RUN groupadd -r appuser && useradd -r -g appuser -d /app -s /sbin/nologin appuser
+
+COPY --from=build /app/publish .
+
+# Set environment variables
+ENV ASPNETCORE_URLS=http://+:8080
+ENV ASPNETCORE_ENVIRONMENT=Production
+ENV DOTNET_EnableDiagnostics=0
+
+EXPOSE 8080
+
+HEALTHCHECK --interval=30s --timeout=10s --start-period=15s --retries=3 \
+    CMD curl -f http://localhost:8080/health/live || exit 1
+
+USER appuser
+
+ENTRYPOINT ["dotnet", "${SERVICE_NAME}.dll"]
