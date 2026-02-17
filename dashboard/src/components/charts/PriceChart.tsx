@@ -1,5 +1,5 @@
 import React, { useEffect, useRef } from "react";
-import { createChart, type IChartApi, ColorType } from "lightweight-charts";
+import { createChart, type IChartApi, type UTCTimestamp, ColorType } from "lightweight-charts";
 import type { Candle } from "@/api/types";
 
 interface PriceChartProps {
@@ -49,7 +49,7 @@ const PriceChart: React.FC<PriceChartProps> = ({ data, symbol, height = 400 }) =
     });
 
     const chartData = data.map((d) => ({
-      time: d.time as number,
+      time: d.time as UTCTimestamp,
       open: d.open,
       high: d.high,
       low: d.low,
@@ -70,7 +70,7 @@ const PriceChart: React.FC<PriceChartProps> = ({ data, symbol, height = 400 }) =
 
     volumeSeries.setData(
       data.map((d) => ({
-        time: d.time as number,
+        time: d.time as UTCTimestamp,
         value: d.volume,
         color: d.close >= d.open ? "#22c55e40" : "#ef444440",
       }))

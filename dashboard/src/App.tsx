@@ -12,7 +12,7 @@ import { useSignalR } from "./hooks/useSignalR";
 import { usePortfolioOverview } from "./api/hooks";
 
 const App: React.FC = () => {
-  const { isConnected, lastTick, lastTrade, lastAlert } = useSignalR();
+  const { isConnected, lastTick, lastTrade } = useSignalR();
   const { data: portfolio } = usePortfolioOverview();
 
   return (
@@ -41,7 +41,7 @@ const App: React.FC = () => {
             <Route path="/strategies" element={<StrategiesPage />} />
             <Route
               path="/risk"
-              element={<RiskPage lastAlert={lastAlert} />}
+              element={<RiskPage />}
             />
             <Route path="/settings" element={<SettingsPage />} />
           </Routes>

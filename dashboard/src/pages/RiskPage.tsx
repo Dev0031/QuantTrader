@@ -2,7 +2,7 @@ import React, { useState, useEffect } from "react";
 import { format } from "date-fns";
 import {
   ShieldAlert,
-  OctagonX,
+  Octagon,
   TrendingDown,
   Target,
   Trophy,
@@ -18,13 +18,8 @@ import {
   useToggleKillSwitch,
   useUpdateRiskSettings,
 } from "@/api/hooks";
-import type { RiskAlert } from "@/api/types";
 
-interface RiskPageProps {
-  lastAlert: RiskAlert | null;
-}
-
-const RiskPage: React.FC<RiskPageProps> = ({ lastAlert }) => {
+const RiskPage: React.FC = () => {
   const { data: metrics, isLoading } = useRiskMetrics();
   const { data: alerts } = useRiskAlerts();
   const toggleKillSwitch = useToggleKillSwitch();
@@ -156,7 +151,7 @@ const RiskPage: React.FC<RiskPageProps> = ({ lastAlert }) => {
             }`}
           >
             <h2 className="card-header flex items-center gap-2">
-              <OctagonX className="w-4 h-4" />
+              <Octagon className="w-4 h-4" />
               Emergency Kill Switch
             </h2>
             <p className="text-sm text-gray-400 mt-2 mb-4">
