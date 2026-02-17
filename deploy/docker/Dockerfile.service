@@ -45,6 +45,7 @@ RUN dotnet publish "src/Services/${SERVICE_NAME}/${SERVICE_NAME}.csproj" \
 # =============================================================================
 FROM mcr.microsoft.com/dotnet/aspnet:8.0 AS runtime
 ARG SERVICE_NAME
+ENV SERVICE_DLL="${SERVICE_NAME}.dll"
 
 WORKDIR /app
 
@@ -69,4 +70,4 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=15s --retries=3 \
 
 USER appuser
 
-ENTRYPOINT ["dotnet", "${SERVICE_NAME}.dll"]
+ENTRYPOINT ["sh", "-c", "exec dotnet $SERVICE_DLL"]
