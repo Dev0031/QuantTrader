@@ -10,13 +10,14 @@ using QuantTrader.Infrastructure.KeyVault;
 using QuantTrader.Infrastructure.Messaging;
 using QuantTrader.Infrastructure.Redis;
 
-var builder = Host.CreateApplicationBuilder(args);
+var builder = WebApplication.CreateBuilder(args);
 
 // Serilog
-builder.Services.AddSerilog(config => config
-    .ReadFrom.Configuration(builder.Configuration)
-    .Enrich.FromLogContext()
-    .Enrich.WithProperty("Service", "ExecutionEngine"));
+builder.Host.UseSerilog((context, services, config) =>
+    config.ReadFrom.Configuration(context.Configuration)
+          .ReadFrom.Services(services)
+          .Enrich.FromLogContext()
+          .Enrich.WithProperty("Service", "ExecutionEngine"));
 
 // Configuration
 builder.Services.Configure<BinanceTradeSettings>(builder.Configuration.GetSection(BinanceTradeSettings.SectionName));
@@ -27,8 +28,13 @@ builder.Services.AddDbContext<TradingDbContext>(options =>
     options.UseNpgsql(builder.Configuration.GetConnectionString("TradingDb")));
 
 // Redis
-builder.Services.AddSingleton<IConnectionMultiplexer>(sp =>
-    ConnectionMultiplexer.Connect(builder.Configuration.GetConnectionString("Redis") ?? "localhost:6379"));
+builder.Services.AddSingleton<IConnectionMultiplexer>(_ =>
+{
+    var redisConfig = ConfigurationOptions.Parse(
+        builder.Configuration.GetConnectionString("Redis") ?? "localhost:6379");
+    redisConfig.AbortOnConnectFail = false;
+    return ConnectionMultiplexer.Connect(redisConfig);
+});
 builder.Services.AddSingleton<IRedisCacheService, RedisCacheService>();
 
 // Key Vault / Secret Provider
@@ -37,7 +43,7 @@ builder.Services.AddSingleton<ISecretProvider>(sp =>
     var config = sp.GetRequiredService<IConfiguration>();
     var logger = sp.GetRequiredService<ILogger<KeyVaultService>>();
     var vaultUri = config["KeyVault:VaultUri"];
-    return new KeyVaultService(config, logger, vaultUri is not null ? new Uri(vaultUri) : null);
+    return new KeyVaultService(config, logger, !string.IsNullOrWhiteSpace(vaultUri) ? new Uri(vaultUri) : null);
 });
 
 // HttpClient for Binance
@@ -60,11 +66,22 @@ builder.Services.AddHealthChecks()
 // Hosted Service
 builder.Services.AddHostedService<ExecutionWorker>();
 
-var host = builder.Build();
+var app = builder.Build();
+
+app.UseSerilogRequestLogging();
+
+app.MapHealthChecks("/health/live", new Microsoft.AspNetCore.Diagnostics.HealthChecks.HealthCheckOptions
+{
+    Predicate = _ => false
+});
+app.MapHealthChecks("/health/ready", new Microsoft.AspNetCore.Diagnostics.HealthChecks.HealthCheckOptions
+{
+    Predicate = _ => true
+});
 
 Log.Information("ExecutionEngine starting");
 
-host.Run();
+app.Run();
 
 Log.Information("ExecutionEngine stopped");
 Log.CloseAndFlush();

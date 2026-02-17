@@ -1,8 +1,10 @@
 using QuantTrader.Common.Configuration;
 using QuantTrader.Infrastructure.Messaging;
+using QuantTrader.Infrastructure.Redis;
 using QuantTrader.RiskManager.Services;
 using QuantTrader.RiskManager.Workers;
 using Serilog;
+using StackExchange.Redis;
 
 Log.Logger = new LoggerConfiguration()
     .WriteTo.Console()
@@ -25,6 +27,16 @@ try
 
     // Event bus
     builder.Services.AddSingleton<IEventBus, InMemoryEventBus>();
+
+    // Redis
+    builder.Services.AddSingleton<IConnectionMultiplexer>(_ =>
+    {
+        var config = ConfigurationOptions.Parse(
+            builder.Configuration.GetConnectionString("Redis") ?? "localhost:6379");
+        config.AbortOnConnectFail = false;
+        return ConnectionMultiplexer.Connect(config);
+    });
+    builder.Services.AddSingleton<IRedisCacheService, RedisCacheService>();
 
     // Services
     builder.Services.AddSingleton<IPositionSizer, PositionSizer>();
