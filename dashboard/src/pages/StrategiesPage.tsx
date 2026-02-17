@@ -9,8 +9,8 @@ const StrategiesPage: React.FC = () => {
   const { data: strategies, isLoading } = useStrategies();
   const toggleStrategy = useToggleStrategy();
 
-  const handleToggle = (id: string, currentEnabled: boolean) => {
-    toggleStrategy.mutate({ id, enabled: !currentEnabled });
+  const handleToggle = (name: string, currentEnabled: boolean) => {
+    toggleStrategy.mutate({ name, enabled: !currentEnabled });
   };
 
   if (isLoading) {
@@ -34,11 +34,10 @@ const StrategiesPage: React.FC = () => {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         {(strategies ?? []).map((strategy) => {
           const pnlPositive = strategy.totalPnl >= 0;
-          const todayPositive = strategy.todayPnl >= 0;
 
           return (
             <div
-              key={strategy.id}
+              key={strategy.name}
               className={`card transition-all ${
                 strategy.enabled
                   ? "border-panel-border"
@@ -63,7 +62,6 @@ const StrategiesPage: React.FC = () => {
                     <h3 className="text-base font-semibold text-white">
                       {strategy.name}
                     </h3>
-                    <p className="text-xs text-gray-500">{strategy.symbol}</p>
                   </div>
                 </div>
                 <div className="flex items-center gap-3">
@@ -74,7 +72,7 @@ const StrategiesPage: React.FC = () => {
                   />
                   <Switch
                     checked={strategy.enabled}
-                    onChange={() => handleToggle(strategy.id, strategy.enabled)}
+                    onChange={() => handleToggle(strategy.name, strategy.enabled)}
                     className={`${
                       strategy.enabled ? "bg-accent" : "bg-gray-700"
                     } relative inline-flex h-6 w-11 items-center rounded-full transition-colors`}
@@ -87,9 +85,6 @@ const StrategiesPage: React.FC = () => {
                   </Switch>
                 </div>
               </div>
-
-              {/* Description */}
-              <p className="text-sm text-gray-400 mb-4">{strategy.description}</p>
 
               {/* Stats Grid */}
               <div className="grid grid-cols-2 gap-3">
@@ -104,19 +99,6 @@ const StrategiesPage: React.FC = () => {
                     }`}
                   >
                     {pnlPositive ? "+" : ""}${strategy.totalPnl.toFixed(2)}
-                  </span>
-                </div>
-                <div className="bg-gray-800/50 rounded-lg p-3">
-                  <div className="flex items-center gap-1.5 mb-1">
-                    <TrendingUp className="w-3.5 h-3.5 text-gray-500" />
-                    <span className="text-xs text-gray-500">Today P&L</span>
-                  </div>
-                  <span
-                    className={`text-lg font-mono font-semibold ${
-                      todayPositive ? "text-profit" : "text-loss"
-                    }`}
-                  >
-                    {todayPositive ? "+" : ""}${strategy.todayPnl.toFixed(2)}
                   </span>
                 </div>
                 <div className="bg-gray-800/50 rounded-lg p-3">
@@ -141,16 +123,25 @@ const StrategiesPage: React.FC = () => {
                     {strategy.totalTrades}
                   </span>
                 </div>
+                <div className="bg-gray-800/50 rounded-lg p-3">
+                  <div className="flex items-center gap-1.5 mb-1">
+                    <BarChart3 className="w-3.5 h-3.5 text-gray-500" />
+                    <span className="text-xs text-gray-500">Winning</span>
+                  </div>
+                  <span className="text-lg font-mono font-semibold text-profit">
+                    {strategy.winningTrades}
+                  </span>
+                </div>
               </div>
 
               {/* Footer */}
               <div className="mt-4 pt-3 border-t border-panel-border flex items-center justify-between">
                 <span className="text-xs text-gray-500">
-                  Max Drawdown: {strategy.maxDrawdown.toFixed(2)}%
+                  Sharpe: {strategy.sharpeRatio.toFixed(2)}
                 </span>
                 <span className="text-xs text-gray-500">
-                  {strategy.lastTradeTime
-                    ? `Last trade: ${format(new Date(strategy.lastTradeTime), "MMM dd HH:mm")}`
+                  {strategy.lastTradeAt
+                    ? `Last trade: ${format(new Date(strategy.lastTradeAt), "MMM dd HH:mm")}`
                     : "No trades yet"}
                 </span>
               </div>

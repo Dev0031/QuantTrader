@@ -79,7 +79,7 @@ const TradeTable: React.FC<TradeTableProps> = ({
                 {formatPnl(trade.realizedPnl)}
               </td>
               {showStrategy && !compact && (
-                <td className="py-3 px-3 text-gray-400">{trade.strategyName}</td>
+                <td className="py-3 px-3 text-gray-400">{trade.strategy}</td>
               )}
             </tr>
           ))}

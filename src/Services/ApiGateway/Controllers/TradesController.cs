@@ -26,8 +26,11 @@ public sealed class TradesController : ControllerBase
     public async Task<IActionResult> GetTrades(
         [FromQuery] int page = 1,
         [FromQuery] int pageSize = 20,
-        [FromQuery] DateTimeOffset? from = null,
-        [FromQuery] DateTimeOffset? to = null,
+        [FromQuery] string? startDate = null,
+        [FromQuery] string? endDate = null,
+        [FromQuery] string? symbol = null,
+        [FromQuery] string? side = null,
+        [FromQuery] string? strategyName = null,
         CancellationToken ct = default)
     {
         if (page < 1) page = 1;
@@ -35,11 +38,20 @@ public sealed class TradesController : ControllerBase
 
         var query = _db.Trades.AsQueryable();
 
-        if (from.HasValue)
-            query = query.Where(t => t.EntryTime >= from.Value);
+        if (!string.IsNullOrEmpty(startDate) && DateTimeOffset.TryParse(startDate, out var from))
+            query = query.Where(t => t.EntryTime >= from);
 
-        if (to.HasValue)
-            query = query.Where(t => t.EntryTime <= to.Value);
+        if (!string.IsNullOrEmpty(endDate) && DateTimeOffset.TryParse(endDate, out var to))
+            query = query.Where(t => t.EntryTime <= to);
+
+        if (!string.IsNullOrEmpty(symbol))
+            query = query.Where(t => t.Symbol == symbol.ToUpperInvariant());
+
+        if (!string.IsNullOrEmpty(side))
+            query = query.Where(t => t.Side == side);
+
+        if (!string.IsNullOrEmpty(strategyName))
+            query = query.Where(t => t.Strategy == strategyName);
 
         var totalCount = await query.CountAsync(ct);
 
@@ -64,11 +76,99 @@ public sealed class TradesController : ControllerBase
 
         return Ok(new
         {
-            data = trades,
+            items = trades,
             page,
             pageSize,
             totalCount,
             totalPages = (int)Math.Ceiling((double)totalCount / pageSize)
+        });
+    }
+
+    /// <summary>Gets recent trades.</summary>
+    [HttpGet("recent")]
+    [AllowAnonymous]
+    public async Task<IActionResult> GetRecentTrades(
+        [FromQuery] int count = 10,
+        CancellationToken ct = default)
+    {
+        if (count is < 1 or > 100) count = 10;
+
+        var trades = await _db.Trades
+            .OrderByDescending(t => t.EntryTime)
+            .Take(count)
+            .Select(t => new TradeResponse(
+                t.Id,
+                t.Symbol,
+                t.Side,
+                t.EntryPrice,
+                t.ExitPrice,
+                t.Quantity,
+                t.RealizedPnl,
+                t.Commission,
+                t.Strategy,
+                t.EntryTime,
+                t.ExitTime,
+                t.Status))
+            .ToListAsync(ct);
+
+        return Ok(trades);
+    }
+
+    /// <summary>Gets trade statistics/performance summary.</summary>
+    [HttpGet("stats")]
+    [AllowAnonymous]
+    public async Task<IActionResult> GetTradeStats(
+        [FromQuery] string? startDate = null,
+        [FromQuery] string? endDate = null,
+        [FromQuery] string? strategyName = null,
+        CancellationToken ct = default)
+    {
+        var query = _db.Trades.Where(t => t.Status == "Closed").AsQueryable();
+
+        if (!string.IsNullOrEmpty(startDate) && DateTimeOffset.TryParse(startDate, out var from))
+            query = query.Where(t => t.EntryTime >= from);
+        if (!string.IsNullOrEmpty(endDate) && DateTimeOffset.TryParse(endDate, out var to))
+            query = query.Where(t => t.EntryTime <= to);
+        if (!string.IsNullOrEmpty(strategyName))
+            query = query.Where(t => t.Strategy == strategyName);
+
+        var trades = await query.ToListAsync(ct);
+
+        if (trades.Count == 0)
+        {
+            return Ok(new
+            {
+                totalTrades = 0,
+                winRate = 0.0,
+                profitFactor = 0.0,
+                averageRR = 0.0,
+                totalPnl = 0m,
+                averageWin = 0m,
+                averageLoss = 0m,
+                largestWin = 0m,
+                largestLoss = 0m
+            });
+        }
+
+        var wins = trades.Where(t => t.RealizedPnl > 0).ToList();
+        var losses = trades.Where(t => t.RealizedPnl <= 0).ToList();
+        var winRate = (double)wins.Count / trades.Count * 100;
+        var avgWin = wins.Count > 0 ? wins.Average(t => t.RealizedPnl) : 0m;
+        var avgLoss = losses.Count > 0 ? losses.Average(t => t.RealizedPnl) : 0m;
+        var profitFactor = avgLoss != 0 ? Math.Abs(avgWin / avgLoss) : 0m;
+        var avgRR = avgLoss != 0 ? Math.Abs(avgWin / avgLoss) : 0m;
+
+        return Ok(new
+        {
+            totalTrades = trades.Count,
+            winRate = Math.Round(winRate, 2),
+            profitFactor,
+            averageRR = avgRR,
+            totalPnl = trades.Sum(t => t.RealizedPnl),
+            averageWin = avgWin,
+            averageLoss = avgLoss,
+            largestWin = wins.Count > 0 ? wins.Max(t => t.RealizedPnl) : 0m,
+            largestLoss = losses.Count > 0 ? losses.Min(t => t.RealizedPnl) : 0m
         });
     }
 

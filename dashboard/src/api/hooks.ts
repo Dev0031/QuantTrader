@@ -12,6 +12,9 @@ import type {
   TradeFilter,
   PaginatedResult,
   TradeStats,
+  ExchangeSettings,
+  SaveExchangeSettingsRequest,
+  ApiKeyStatus,
 } from "./types";
 
 // --- Portfolio ---
@@ -20,11 +23,12 @@ export function usePortfolioOverview() {
   return useQuery<PortfolioOverview>({
     queryKey: ["portfolio", "overview"],
     queryFn: async () => {
-      const { data } = await apiClient.get("/portfolio/overview");
+      const { data } = await apiClient.get("/dashboard/overview");
       return data;
     },
     staleTime: 10 * 1000,
     refetchInterval: 10 * 1000,
+    retry: 1,
   });
 }
 
@@ -32,11 +36,12 @@ export function useEquityCurve(days: number = 30) {
   return useQuery<EquityPoint[]>({
     queryKey: ["portfolio", "equity-curve", days],
     queryFn: async () => {
-      const { data } = await apiClient.get(`/portfolio/equity-curve?days=${days}`);
+      const { data } = await apiClient.get("/trades/equity-curve");
       return data;
     },
     staleTime: 60 * 1000,
     refetchInterval: 60 * 1000,
+    retry: 1,
   });
 }
 
@@ -58,6 +63,7 @@ export function useTrades(filters: TradeFilter) {
       return data;
     },
     staleTime: 15 * 1000,
+    retry: 1,
   });
 }
 
@@ -70,6 +76,7 @@ export function useRecentTrades(count: number = 10) {
     },
     staleTime: 10 * 1000,
     refetchInterval: 10 * 1000,
+    retry: 1,
   });
 }
 
@@ -85,6 +92,7 @@ export function useTradeStats(filters?: Partial<TradeFilter>) {
       return data;
     },
     staleTime: 30 * 1000,
+    retry: 1,
   });
 }
 
@@ -99,14 +107,15 @@ export function usePositions() {
     },
     staleTime: 5 * 1000,
     refetchInterval: 5 * 1000,
+    retry: 1,
   });
 }
 
 export function useClosePosition() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async (positionId: string) => {
-      const { data } = await apiClient.post(`/positions/${positionId}/close`);
+    mutationFn: async (symbol: string) => {
+      const { data } = await apiClient.post(`/positions/${symbol}/close`);
       return data;
     },
     onSuccess: () => {
@@ -127,14 +136,15 @@ export function useStrategies() {
     },
     staleTime: 15 * 1000,
     refetchInterval: 15 * 1000,
+    retry: 1,
   });
 }
 
 export function useToggleStrategy() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async ({ id, enabled }: { id: string; enabled: boolean }) => {
-      const { data } = await apiClient.put(`/strategies/${id}/toggle`, { enabled });
+    mutationFn: async ({ name, enabled }: { name: string; enabled: boolean }) => {
+      const { data } = await apiClient.put(`/strategies/${name}/toggle`, { enabled });
       return data;
     },
     onSuccess: () => {
@@ -154,6 +164,7 @@ export function useRiskMetrics() {
     },
     staleTime: 10 * 1000,
     refetchInterval: 10 * 1000,
+    retry: 1,
   });
 }
 
@@ -161,19 +172,23 @@ export function useRiskAlerts() {
   return useQuery<RiskAlert[]>({
     queryKey: ["risk", "alerts"],
     queryFn: async () => {
-      const { data } = await apiClient.get("/risk/alerts");
+      const { data } = await apiClient.get("/dashboard/alerts");
       return data;
     },
     staleTime: 10 * 1000,
     refetchInterval: 10 * 1000,
+    retry: 1,
   });
 }
 
 export function useToggleKillSwitch() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async (active: boolean) => {
-      const { data } = await apiClient.post("/risk/kill-switch", { active });
+    mutationFn: async (activate: boolean) => {
+      const endpoint = activate
+        ? "/risk/killswitch/activate"
+        : "/risk/killswitch/deactivate";
+      const { data } = await apiClient.post(endpoint);
       return data;
     },
     onSuccess: () => {
@@ -186,7 +201,11 @@ export function useToggleKillSwitch() {
 export function useUpdateRiskSettings() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async (settings: Partial<RiskMetrics>) => {
+    mutationFn: async (settings: {
+      maxRiskPerTradePercent: number;
+      maxDrawdownPercent: number;
+      maxDailyLoss: number;
+    }) => {
       const { data } = await apiClient.put("/risk/settings", settings);
       return data;
     },
@@ -202,13 +221,77 @@ export function useMarketPrices(symbols: string[]) {
   return useQuery<MarketTick[]>({
     queryKey: ["market", "prices", symbols],
     queryFn: async () => {
-      const { data } = await apiClient.get("/market/prices", {
-        params: { symbols: symbols.join(",") },
-      });
+      const { data } = await apiClient.get("/market/prices");
       return data;
     },
     staleTime: 5 * 1000,
     refetchInterval: 5 * 1000,
     enabled: symbols.length > 0,
+    retry: 1,
+  });
+}
+
+// --- Settings ---
+
+export function useExchangeSettings() {
+  return useQuery<ExchangeSettings[]>({
+    queryKey: ["settings", "exchanges"],
+    queryFn: async () => {
+      const { data } = await apiClient.get("/settings/exchanges");
+      return data;
+    },
+    staleTime: 30 * 1000,
+    retry: 1,
+  });
+}
+
+export function useSaveExchangeSettings() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (settings: SaveExchangeSettingsRequest) => {
+      const { data } = await apiClient.post("/settings/exchanges", settings);
+      return data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["settings"] });
+    },
+  });
+}
+
+export function useDeleteExchangeSettings() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (exchange: string) => {
+      const { data } = await apiClient.delete(`/settings/exchanges/${exchange}`);
+      return data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["settings"] });
+    },
+  });
+}
+
+export function useVerifyExchangeSettings() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (exchange: string) => {
+      const { data } = await apiClient.post(`/settings/exchanges/${exchange}/verify`);
+      return data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["settings"] });
+    },
+  });
+}
+
+export function useApiKeyStatus() {
+  return useQuery<ApiKeyStatus[]>({
+    queryKey: ["settings", "api-keys-status"],
+    queryFn: async () => {
+      const { data } = await apiClient.get("/settings/api-keys/status");
+      return data;
+    },
+    staleTime: 30 * 1000,
+    retry: 1,
   });
 }

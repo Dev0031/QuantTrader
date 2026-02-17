@@ -46,7 +46,7 @@ const EquityChart: React.FC<EquityChartProps> = ({ data, height = 300 }) => {
         </defs>
         <CartesianGrid strokeDasharray="3 3" stroke="#1f2937" />
         <XAxis
-          dataKey="date"
+          dataKey="timestamp"
           tickFormatter={(d) => format(new Date(d), "MMM dd")}
           stroke="#6b7280"
           tick={{ fontSize: 11 }}

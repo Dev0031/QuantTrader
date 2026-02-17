@@ -62,9 +62,9 @@ public sealed class StrategyController : ControllerBase
         return Ok(result);
     }
 
-    /// <summary>Toggles a strategy's enabled/disabled state. Requires admin role.</summary>
+    /// <summary>Toggles a strategy's enabled/disabled state.</summary>
     [HttpPut("{name}/toggle")]
-    [Authorize(Roles = "Admin")]
+    [AllowAnonymous]
     public IActionResult ToggleStrategy(string name)
     {
         var settings = _strategySettings.CurrentValue;

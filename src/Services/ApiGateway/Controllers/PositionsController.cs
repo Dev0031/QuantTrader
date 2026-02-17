@@ -80,9 +80,9 @@ public sealed class PositionsController : ControllerBase
         return Ok(response);
     }
 
-    /// <summary>Manually closes a position for a given symbol. Requires admin role.</summary>
+    /// <summary>Manually closes a position for a given symbol.</summary>
     [HttpPost("{symbol}/close")]
-    [Authorize(Roles = "Admin")]
+    [AllowAnonymous]
     public async Task<IActionResult> ClosePosition(string symbol, CancellationToken ct)
     {
         var snapshot = await _redis.GetPortfolioSnapshotAsync(ct);

@@ -3,7 +3,6 @@ import {
   DollarSign,
   TrendingUp,
   Briefcase,
-  Brain,
   Zap,
 } from "lucide-react";
 import StatCard from "@/components/common/StatCard";
@@ -38,41 +37,44 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ lastTick }) => {
     );
   }
 
+  const todayPnl = portfolio?.todayPnl ?? 0;
+  const totalEquity = portfolio?.totalEquity ?? 0;
+  const todayPnlPercent = totalEquity > 0 ? (todayPnl / totalEquity) * 100 : 0;
+  const totalPnlPercent = totalEquity > 0 ? ((portfolio?.totalRealizedPnl ?? 0) / totalEquity) * 100 : 0;
+
   return (
     <div className="space-y-6">
       {/* Stats Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         <StatCard
           title="Portfolio Equity"
-          value={`$${(portfolio?.totalEquity ?? 0).toLocaleString(undefined, {
+          value={`$${totalEquity.toLocaleString(undefined, {
             minimumFractionDigits: 2,
           })}`}
-          change={portfolio?.totalPnlPercent}
+          change={totalPnlPercent}
           changeLabel="all time"
           icon={DollarSign}
           iconColor="text-accent"
         />
         <StatCard
           title="Today's P&L"
-          value={`${(portfolio?.todayPnl ?? 0) >= 0 ? "+" : ""}$${(
-            portfolio?.todayPnl ?? 0
-          ).toFixed(2)}`}
-          change={portfolio?.todayPnlPercent}
+          value={`${todayPnl >= 0 ? "+" : ""}$${todayPnl.toFixed(2)}`}
+          change={todayPnlPercent}
           changeLabel="today"
           icon={TrendingUp}
-          iconColor={(portfolio?.todayPnl ?? 0) >= 0 ? "text-profit" : "text-loss"}
-          valueColor={(portfolio?.todayPnl ?? 0) >= 0 ? "text-profit" : "text-loss"}
+          iconColor={todayPnl >= 0 ? "text-profit" : "text-loss"}
+          valueColor={todayPnl >= 0 ? "text-profit" : "text-loss"}
         />
         <StatCard
           title="Open Positions"
-          value={(portfolio?.openPositionsCount ?? 0).toString()}
+          value={(portfolio?.activePositionCount ?? 0).toString()}
           icon={Briefcase}
           iconColor="text-yellow-400"
         />
         <StatCard
-          title="Active Strategies"
-          value={(portfolio?.activeStrategiesCount ?? 0).toString()}
-          icon={Brain}
+          title="Drawdown"
+          value={`${(portfolio?.drawdownPercent ?? 0).toFixed(2)}%`}
+          icon={TrendingUp}
           iconColor="text-purple-400"
         />
       </div>

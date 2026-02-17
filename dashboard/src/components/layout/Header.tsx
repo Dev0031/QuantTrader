@@ -48,7 +48,7 @@ const Header: React.FC<HeaderProps> = ({ isConnected, portfolio }) => {
                   {pnlPositive ? "+" : ""}${portfolio.todayPnl.toFixed(2)}
                 </span>
                 <span className="text-xs">
-                  ({pnlPositive ? "+" : ""}{portfolio.todayPnlPercent.toFixed(2)}%)
+                  ({pnlPositive ? "+" : ""}{(portfolio.totalEquity > 0 ? (portfolio.todayPnl / portfolio.totalEquity * 100) : 0).toFixed(2)}%)
                 </span>
               </div>
             </div>

@@ -23,62 +23,53 @@ export interface Trade {
   entryPrice: number;
   exitPrice: number | null;
   quantity: number;
-  realizedPnl: number | null;
-  fee: number;
-  strategyName: string;
+  realizedPnl: number;
+  commission: number;
+  strategy: string;
   entryTime: string;
   exitTime: string | null;
   status: "Open" | "Closed" | "Cancelled";
 }
 
 export interface Position {
-  id: string;
   symbol: string;
-  side: "Long" | "Short";
+  side: string;
   entryPrice: number;
   currentPrice: number;
   quantity: number;
   unrealizedPnl: number;
-  unrealizedPnlPercent: number;
+  realizedPnl: number;
   stopLoss: number | null;
   takeProfit: number | null;
-  strategyName: string;
   openedAt: string;
 }
 
 export interface PortfolioOverview {
   totalEquity: number;
   availableBalance: number;
+  totalUnrealizedPnl: number;
+  totalRealizedPnl: number;
+  drawdownPercent: number;
+  activePositionCount: number;
   todayPnl: number;
-  todayPnlPercent: number;
-  totalPnl: number;
-  totalPnlPercent: number;
-  openPositionsCount: number;
-  activeStrategiesCount: number;
-  todayTradesCount: number;
-  winRate: number;
+  timestamp: string;
 }
 
 export interface EquityPoint {
-  date: string;
+  timestamp: string;
   equity: number;
-  drawdown: number;
 }
 
 export interface RiskMetrics {
-  currentDrawdown: number;
   currentDrawdownPercent: number;
-  maxDrawdown: number;
   maxDrawdownPercent: number;
-  sharpeRatio: number;
-  sortinoRatio: number;
-  winRate: number;
-  profitFactor: number;
-  averageRR: number;
-  maxRiskPerTrade: number;
-  maxDrawdownLimit: number;
-  dailyLossLimit: number;
+  totalExposure: number;
+  openPositionCount: number;
+  maxOpenPositions: number;
+  dailyLoss: number;
+  maxDailyLoss: number;
   killSwitchActive: boolean;
+  timestamp: string;
 }
 
 export interface RiskAlert {
@@ -90,17 +81,14 @@ export interface RiskAlert {
 }
 
 export interface StrategyStatus {
-  id: string;
   name: string;
   enabled: boolean;
-  symbol: string;
-  winRate: number;
   totalTrades: number;
+  winningTrades: number;
   totalPnl: number;
-  todayPnl: number;
-  maxDrawdown: number;
-  lastTradeTime: string | null;
-  description: string;
+  winRate: number;
+  sharpeRatio: number;
+  lastTradeAt: string | null;
 }
 
 export interface TradeFilter {
@@ -131,4 +119,30 @@ export interface TradeStats {
   averageLoss: number;
   largestWin: number;
   largestLoss: number;
+}
+
+// --- Settings Types ---
+
+export interface ExchangeSettings {
+  exchange: string;
+  apiKeyMasked: string;
+  hasSecret: boolean;
+  useTestnet: boolean;
+  status: string;
+  lastVerified: string | null;
+}
+
+export interface SaveExchangeSettingsRequest {
+  exchange: string;
+  apiKey: string;
+  apiSecret: string;
+  useTestnet: boolean;
+}
+
+export interface ApiKeyStatus {
+  name: string;
+  description: string;
+  isConfigured: boolean;
+  maskedKey: string | null;
+  status: string;
 }

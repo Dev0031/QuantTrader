@@ -12,9 +12,9 @@ const PositionsPage: React.FC<PositionsPageProps> = ({ lastTick }) => {
   const { data: positions, isLoading } = usePositions();
   const closePosition = useClosePosition();
 
-  const handleClose = (positionId: string, symbol: string) => {
+  const handleClose = (symbol: string) => {
     if (window.confirm(`Close position on ${symbol}?`)) {
-      closePosition.mutate(positionId);
+      closePosition.mutate(symbol);
     }
   };
 
@@ -56,7 +56,6 @@ const PositionsPage: React.FC<PositionsPageProps> = ({ lastTick }) => {
                 <th className="text-right py-3 px-3 font-medium">Unrealized P&L</th>
                 <th className="text-right py-3 px-3 font-medium">Stop Loss</th>
                 <th className="text-right py-3 px-3 font-medium">Take Profit</th>
-                <th className="text-left py-3 px-3 font-medium">Strategy</th>
                 <th className="text-center py-3 px-3 font-medium">Action</th>
               </tr>
             </thead>
@@ -65,9 +64,14 @@ const PositionsPage: React.FC<PositionsPageProps> = ({ lastTick }) => {
                 const isRealtime = lastTick?.symbol === pos.symbol;
                 const currentPrice = isRealtime ? lastTick!.price : pos.currentPrice;
                 const pnlColor = pos.unrealizedPnl >= 0 ? "text-profit" : "text-loss";
+                const pnlPercent =
+                  pos.entryPrice > 0
+                    ? ((currentPrice - pos.entryPrice) / pos.entryPrice) * 100 *
+                      (pos.side === "Short" ? -1 : 1)
+                    : 0;
 
                 return (
-                  <tr key={pos.id} className="table-row">
+                  <tr key={pos.symbol} className="table-row">
                     <td className="py-3 px-3">
                       <span className="font-medium text-white">{pos.symbol}</span>
                     </td>
@@ -89,8 +93,8 @@ const PositionsPage: React.FC<PositionsPageProps> = ({ lastTick }) => {
                     <td className={`py-3 px-3 text-right font-mono font-medium ${pnlColor}`}>
                       <div>{formatPnl(pos.unrealizedPnl)}</div>
                       <div className="text-xs opacity-75">
-                        {pos.unrealizedPnlPercent >= 0 ? "+" : ""}
-                        {pos.unrealizedPnlPercent.toFixed(2)}%
+                        {pnlPercent >= 0 ? "+" : ""}
+                        {pnlPercent.toFixed(2)}%
                       </div>
                     </td>
                     <td className="py-3 px-3 text-right font-mono text-gray-400">
@@ -99,10 +103,9 @@ const PositionsPage: React.FC<PositionsPageProps> = ({ lastTick }) => {
                     <td className="py-3 px-3 text-right font-mono text-gray-400">
                       {pos.takeProfit ? formatPrice(pos.takeProfit) : "-"}
                     </td>
-                    <td className="py-3 px-3 text-gray-400">{pos.strategyName}</td>
                     <td className="py-3 px-3 text-center">
                       <button
-                        onClick={() => handleClose(pos.id, pos.symbol)}
+                        onClick={() => handleClose(pos.symbol)}
                         disabled={closePosition.isPending}
                         className="p-1.5 rounded-lg bg-loss/10 text-loss hover:bg-loss/20 transition-colors disabled:opacity-50"
                         title="Close Position"
@@ -115,7 +118,7 @@ const PositionsPage: React.FC<PositionsPageProps> = ({ lastTick }) => {
               })}
               {(!positions || positions.length === 0) && (
                 <tr>
-                  <td colSpan={10} className="py-12 text-center text-gray-500">
+                  <td colSpan={9} className="py-12 text-center text-gray-500">
                     No open positions
                   </td>
                 </tr>

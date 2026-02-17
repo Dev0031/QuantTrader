@@ -1,11 +1,10 @@
-import React, { useState, useEffect } from "react";
+import React, { useState } from "react";
 import { format } from "date-fns";
 import {
   ShieldAlert,
   Octagon,
   TrendingDown,
   Target,
-  Trophy,
   BarChart3,
   AlertTriangle,
   Info,
@@ -26,16 +25,8 @@ const RiskPage: React.FC = () => {
   const updateSettings = useUpdateRiskSettings();
 
   const [maxRisk, setMaxRisk] = useState("2");
-  const [maxDrawdown, setMaxDrawdown] = useState("10");
-  const [dailyLoss, setDailyLoss] = useState("5");
-
-  useEffect(() => {
-    if (metrics) {
-      setMaxRisk(metrics.maxRiskPerTrade.toString());
-      setMaxDrawdown(metrics.maxDrawdownLimit.toString());
-      setDailyLoss(metrics.dailyLossLimit.toString());
-    }
-  }, [metrics]);
+  const [maxDrawdown, setMaxDrawdown] = useState("5");
+  const [dailyLoss, setDailyLoss] = useState("500");
 
   const handleKillSwitch = () => {
     const newState = !metrics?.killSwitchActive;
@@ -49,9 +40,9 @@ const RiskPage: React.FC = () => {
 
   const handleSaveSettings = () => {
     updateSettings.mutate({
-      maxRiskPerTrade: parseFloat(maxRisk),
-      maxDrawdownLimit: parseFloat(maxDrawdown),
-      dailyLossLimit: parseFloat(dailyLoss),
+      maxRiskPerTradePercent: parseFloat(maxRisk),
+      maxDrawdownPercent: parseFloat(maxDrawdown),
+      maxDailyLoss: parseFloat(dailyLoss),
     });
   };
 
@@ -75,8 +66,8 @@ const RiskPage: React.FC = () => {
   }
 
   const drawdownPercent = metrics?.currentDrawdownPercent ?? 0;
-  const maxDDLimit = metrics?.maxDrawdownLimit ?? 10;
-  const drawdownRatio = Math.min((drawdownPercent / maxDDLimit) * 100, 100);
+  const maxDDLimit = metrics?.maxDrawdownPercent ?? 5;
+  const drawdownRatio = maxDDLimit > 0 ? Math.min((drawdownPercent / maxDDLimit) * 100, 100) : 0;
 
   return (
     <div className="space-y-6">
@@ -132,14 +123,6 @@ const RiskPage: React.FC = () => {
                 <span className="text-xs text-gray-500">{maxDDLimit}%</span>
               </div>
             </div>
-            <div className="mt-3 pt-3 border-t border-panel-border">
-              <div className="flex justify-between text-sm">
-                <span className="text-gray-400">Max Drawdown (All Time)</span>
-                <span className="font-mono text-loss">
-                  {metrics?.maxDrawdownPercent.toFixed(2)}%
-                </span>
-              </div>
-            </div>
           </div>
 
           {/* Kill Switch */}
@@ -180,34 +163,34 @@ const RiskPage: React.FC = () => {
             <div className="space-y-4 mt-3">
               {[
                 {
-                  label: "Sharpe Ratio",
-                  value: metrics?.sharpeRatio.toFixed(2) ?? "-",
+                  label: "Total Exposure",
+                  value: `$${(metrics?.totalExposure ?? 0).toFixed(2)}`,
                   icon: BarChart3,
-                  good: (metrics?.sharpeRatio ?? 0) >= 1,
+                  good: true,
                 },
                 {
-                  label: "Sortino Ratio",
-                  value: metrics?.sortinoRatio.toFixed(2) ?? "-",
-                  icon: BarChart3,
-                  good: (metrics?.sortinoRatio ?? 0) >= 1.5,
-                },
-                {
-                  label: "Win Rate",
-                  value: `${metrics?.winRate.toFixed(1) ?? "-"}%`,
-                  icon: Trophy,
-                  good: (metrics?.winRate ?? 0) >= 50,
-                },
-                {
-                  label: "Profit Factor",
-                  value: metrics?.profitFactor.toFixed(2) ?? "-",
+                  label: "Open Positions",
+                  value: `${metrics?.openPositionCount ?? 0} / ${metrics?.maxOpenPositions ?? 5}`,
                   icon: Target,
-                  good: (metrics?.profitFactor ?? 0) >= 1.5,
+                  good: (metrics?.openPositionCount ?? 0) < (metrics?.maxOpenPositions ?? 5),
                 },
                 {
-                  label: "Avg Risk:Reward",
-                  value: metrics?.averageRR.toFixed(2) ?? "-",
+                  label: "Daily Loss",
+                  value: `$${Math.abs(metrics?.dailyLoss ?? 0).toFixed(2)}`,
                   icon: ShieldAlert,
-                  good: (metrics?.averageRR ?? 0) >= 1,
+                  good: Math.abs(metrics?.dailyLoss ?? 0) < (metrics?.maxDailyLoss ?? 1000),
+                },
+                {
+                  label: "Max Daily Loss",
+                  value: `$${(metrics?.maxDailyLoss ?? 0).toFixed(2)}`,
+                  icon: ShieldAlert,
+                  good: true,
+                },
+                {
+                  label: "Max Drawdown Limit",
+                  value: `${(metrics?.maxDrawdownPercent ?? 0).toFixed(1)}%`,
+                  icon: TrendingDown,
+                  good: true,
                 },
               ].map(({ label, value, icon: Icon, good }) => (
                 <div
@@ -260,11 +243,11 @@ const RiskPage: React.FC = () => {
               </div>
               <div>
                 <label className="block text-xs text-gray-400 mb-1">
-                  Daily Loss Limit (%)
+                  Max Daily Loss ($)
                 </label>
                 <input
                   type="number"
-                  step="0.5"
+                  step="50"
                   value={dailyLoss}
                   onChange={(e) => setDailyLoss(e.target.value)}
                   className="input-field w-full"
