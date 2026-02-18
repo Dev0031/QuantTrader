@@ -8,20 +8,26 @@ namespace QuantTrader.ApiGateway.Services;
 /// <summary>
 /// Background service that subscribes to event bus topics and forwards updates
 /// to connected SignalR clients in real time.
+/// Also logs each event to the activity feed for system transparency.
 /// </summary>
 public sealed class RealTimeNotifier : BackgroundService
 {
     private readonly IEventBus _eventBus;
     private readonly IHubContext<TradingHub> _hubContext;
+    private readonly IActivityLogService _activityLog;
     private readonly ILogger<RealTimeNotifier> _logger;
+
+    private long _tickCount;
 
     public RealTimeNotifier(
         IEventBus eventBus,
         IHubContext<TradingHub> hubContext,
+        IActivityLogService activityLog,
         ILogger<RealTimeNotifier> logger)
     {
         _eventBus = eventBus;
         _hubContext = hubContext;
+        _activityLog = activityLog;
         _logger = logger;
     }
 
@@ -47,29 +53,38 @@ public sealed class RealTimeNotifier : BackgroundService
             async (tickEvent, token) =>
             {
                 var tick = tickEvent.Tick;
+                _tickCount++;
+
+                var payload = new
+                {
+                    tick.Symbol,
+                    tick.Price,
+                    tick.Volume,
+                    tick.BidPrice,
+                    tick.AskPrice,
+                    tick.Timestamp,
+                    Source = tickEvent.Source
+                };
 
                 // Push to the symbol-specific group
                 await _hubContext.Clients
                     .Group($"symbol:{tick.Symbol}")
-                    .SendAsync("OnTickUpdate", new
-                    {
-                        tick.Symbol,
-                        tick.Price,
-                        tick.Volume,
-                        tick.BidPrice,
-                        tick.AskPrice,
-                        tick.Timestamp
-                    }, token);
+                    .SendAsync("OnTickUpdate", payload, token);
 
                 // Push to the general prices group
                 await _hubContext.Clients
                     .Group("prices")
-                    .SendAsync("OnTickUpdate", new
-                    {
-                        tick.Symbol,
-                        tick.Price,
-                        tick.Timestamp
-                    }, token);
+                    .SendAsync("OnTickUpdate", payload, token);
+
+                // Log to activity feed every 50 ticks to avoid flooding
+                if (_tickCount % 50 == 1)
+                {
+                    await _activityLog.LogAsync(
+                        tickEvent.Source ?? "DataIngestion",
+                        "info",
+                        $"{tick.Symbol} @ ${tick.Price:N2}  |  {_tickCount:N0} ticks pushed to dashboard",
+                        tick.Symbol, token);
+                }
             },
             ct);
     }
@@ -84,18 +99,20 @@ public sealed class RealTimeNotifier : BackgroundService
                 _logger.LogInformation("Broadcasting trade execution: {Symbol} {Side} {Qty}",
                     order.Symbol, order.Side, order.Quantity);
 
+                var tradePaylod = new
+                {
+                    order.Id,
+                    order.Symbol,
+                    Side = order.Side.ToString(),
+                    order.Quantity,
+                    order.FilledPrice,
+                    Status = order.Status.ToString(),
+                    order.Timestamp
+                };
+
                 await _hubContext.Clients
                     .Group("trades")
-                    .SendAsync("OnTradeExecuted", new
-                    {
-                        order.Id,
-                        order.Symbol,
-                        Side = order.Side.ToString(),
-                        order.Quantity,
-                        order.FilledPrice,
-                        Status = order.Status.ToString(),
-                        order.Timestamp
-                    }, token);
+                    .SendAsync("OnTradeExecuted", tradePaylod, token);
 
                 // Also push position update to the symbol group
                 await _hubContext.Clients
@@ -108,6 +125,11 @@ public sealed class RealTimeNotifier : BackgroundService
                         order.FilledPrice,
                         order.Timestamp
                     }, token);
+
+                await _activityLog.LogAsync(
+                    "ExecutionEngine", "success",
+                    $"Trade executed: {order.Side} {order.Quantity} {order.Symbol} @ ${order.FilledPrice:N2}",
+                    order.Symbol, token);
             },
             ct);
     }
@@ -131,6 +153,15 @@ public sealed class RealTimeNotifier : BackgroundService
                         alertEvent.Severity,
                         alertEvent.Timestamp
                     }, token);
+
+                var level = alertEvent.Severity >= 0.8 ? "error"
+                          : alertEvent.Severity >= 0.5 ? "warning"
+                          : "info";
+
+                await _activityLog.LogAsync(
+                    "RiskManager", level,
+                    $"Risk alert: {alertEvent.AlertType} — {alertEvent.Message}",
+                    alertEvent.Symbol, token);
             },
             ct);
     }

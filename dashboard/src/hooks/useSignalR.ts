@@ -5,13 +5,14 @@ import {
   HubConnectionState,
   LogLevel,
 } from "@microsoft/signalr";
-import type { MarketTick, Trade, RiskAlert } from "@/api/types";
+import type { MarketTick, Trade, RiskAlert, ActivityEntry } from "@/api/types";
 
 interface SignalRState {
   isConnected: boolean;
   lastTick: MarketTick | null;
   lastTrade: Trade | null;
   lastAlert: RiskAlert | null;
+  lastActivity: ActivityEntry | null;
 }
 
 interface UseSignalRReturn extends SignalRState {
@@ -25,6 +26,7 @@ export function useSignalR(): UseSignalRReturn {
   const [lastTick, setLastTick] = useState<MarketTick | null>(null);
   const [lastTrade, setLastTrade] = useState<Trade | null>(null);
   const [lastAlert, setLastAlert] = useState<RiskAlert | null>(null);
+  const [lastActivity, setLastActivity] = useState<ActivityEntry | null>(null);
 
   useEffect(() => {
     const connection = new HubConnectionBuilder()
@@ -40,16 +42,22 @@ export function useSignalR(): UseSignalRReturn {
       .configureLogging(LogLevel.Warning)
       .build();
 
-    connection.on("TickReceived", (tick: MarketTick) => {
+    // NOTE: Event names must match exactly what the backend sends via SendAsync().
+    // Backend sends: "OnTickUpdate", "OnTradeExecuted", "OnRiskAlert", "OnSystemActivity"
+    connection.on("OnTickUpdate", (tick: MarketTick) => {
       setLastTick(tick);
     });
 
-    connection.on("TradeExecuted", (trade: Trade) => {
+    connection.on("OnTradeExecuted", (trade: Trade) => {
       setLastTrade(trade);
     });
 
-    connection.on("RiskAlert", (alert: RiskAlert) => {
+    connection.on("OnRiskAlert", (alert: RiskAlert) => {
       setLastAlert(alert);
+    });
+
+    connection.on("OnSystemActivity", (activity: ActivityEntry) => {
+      setLastActivity(activity);
     });
 
     connection.onreconnecting(() => {
@@ -98,5 +106,5 @@ export function useSignalR(): UseSignalRReturn {
     }
   }, []);
 
-  return { isConnected, lastTick, lastTrade, lastAlert, subscribe, unsubscribe };
+  return { isConnected, lastTick, lastTrade, lastAlert, lastActivity, subscribe, unsubscribe };
 }

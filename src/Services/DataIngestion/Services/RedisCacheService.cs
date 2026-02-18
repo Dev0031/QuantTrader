@@ -1,3 +1,4 @@
+using System.Text.Json;
 using StackExchange.Redis;
 
 namespace QuantTrader.DataIngestion.Services;
@@ -5,13 +6,24 @@ namespace QuantTrader.DataIngestion.Services;
 /// <summary>Redis-backed cache service for storing latest market data.</summary>
 public sealed class RedisCacheService : IRedisCacheService
 {
+    private readonly IConnectionMultiplexer _redis;
     private readonly IDatabase _db;
     private readonly ILogger<RedisCacheService> _logger;
 
     private const string PriceKeyPrefix = "price:latest:";
 
+    // Redis pub/sub channel that ApiGateway's RedisTickBridgeWorker subscribes to.
+    // Publishing here enables real-time SignalR updates across service boundaries.
+    private const string TickChannel = "market:ticks";
+
+    private static readonly JsonSerializerOptions JsonOpts = new()
+    {
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase
+    };
+
     public RedisCacheService(IConnectionMultiplexer redis, ILogger<RedisCacheService> logger)
     {
+        _redis = redis;
         _db = redis.GetDatabase();
         _logger = logger;
     }
@@ -20,8 +32,23 @@ public sealed class RedisCacheService : IRedisCacheService
     {
         try
         {
-            var key = $"{PriceKeyPrefix}{symbol.ToUpperInvariant()}";
+            var upperSymbol = symbol.ToUpperInvariant();
+            var key = $"{PriceKeyPrefix}{upperSymbol}";
             await _db.StringSetAsync(key, price.ToString("F8"), TimeSpan.FromMinutes(5));
+
+            // Publish to Redis pub/sub so ApiGateway can bridge to SignalR in real-time
+            var payload = JsonSerializer.Serialize(new
+            {
+                symbol = upperSymbol,
+                price,
+                volume = 0m,
+                bidPrice = price * 0.9999m,
+                askPrice = price * 1.0001m,
+                timestamp = DateTimeOffset.UtcNow
+            }, JsonOpts);
+
+            var subscriber = _redis.GetSubscriber();
+            await subscriber.PublishAsync(RedisChannel.Literal(TickChannel), payload);
         }
         catch (Exception ex)
         {

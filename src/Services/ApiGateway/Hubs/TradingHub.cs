@@ -21,6 +21,7 @@ public sealed class TradingHub : Hub
 
         await Groups.AddToGroupAsync(Context.ConnectionId, "trades");
         await Groups.AddToGroupAsync(Context.ConnectionId, "prices");
+        await Groups.AddToGroupAsync(Context.ConnectionId, "system");   // receives activity feed + system events
 
         await base.OnConnectedAsync();
     }

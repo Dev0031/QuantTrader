@@ -8,13 +8,14 @@ import PositionsPage from "./pages/PositionsPage";
 import StrategiesPage from "./pages/StrategiesPage";
 import RiskPage from "./pages/RiskPage";
 import SettingsPage from "./pages/SettingsPage";
+import SystemPage from "./pages/SystemPage";
 import { ToastProvider } from "./components/common/Toast";
 import SetupWizard from "./components/common/SetupWizard";
 import { useSignalR } from "./hooks/useSignalR";
 import { usePortfolioOverview, useApiProviders } from "./api/hooks";
 
 const App: React.FC = () => {
-  const { isConnected, lastTick, lastTrade } = useSignalR();
+  const { isConnected, lastTick, lastTrade, lastActivity } = useSignalR();
   const { data: portfolio } = usePortfolioOverview();
   const { data: providers } = useApiProviders();
 
@@ -35,7 +36,7 @@ const App: React.FC = () => {
       {showWizard && <SetupWizard onComplete={handleSetupComplete} />}
 
       <div className="flex min-h-screen bg-gray-900">
-        <Sidebar isConnected={isConnected} />
+        <Sidebar isConnected={isConnected} lastActivity={lastActivity} />
 
         <div className="flex-1 ml-64 flex flex-col">
           <Header isConnected={isConnected} portfolio={portfolio} />
@@ -62,6 +63,7 @@ const App: React.FC = () => {
                 element={<RiskPage />}
               />
               <Route path="/settings" element={<SettingsPage />} />
+              <Route path="/system" element={<SystemPage />} />
             </Routes>
           </main>
         </div>

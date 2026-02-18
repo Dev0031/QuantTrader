@@ -170,10 +170,17 @@ try
     });
 
     // ---------------------------------------------------------------------------
+    // Application services
+    // ---------------------------------------------------------------------------
+    builder.Services.AddSingleton<IActivityLogService, ActivityLogService>();
+
+    // ---------------------------------------------------------------------------
     // Background services
     // ---------------------------------------------------------------------------
     builder.Services.AddHostedService<RealTimeNotifier>();
     builder.Services.AddHostedService<PortfolioSyncWorker>();
+    builder.Services.AddHostedService<SimulationWorker>();
+    builder.Services.AddHostedService<RedisTickBridgeWorker>();
 
     // ---------------------------------------------------------------------------
     // Rate Limiting

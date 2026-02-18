@@ -8,7 +8,9 @@ import {
   ShieldAlert,
   Settings,
   Activity,
+  Terminal,
 } from "lucide-react";
+import type { ActivityEntry } from "@/api/types";
 
 interface NavItem {
   to: string;
@@ -23,13 +25,22 @@ const navItems: NavItem[] = [
   { to: "/strategies", label: "Strategies", icon: Brain },
   { to: "/risk", label: "Risk", icon: ShieldAlert },
   { to: "/settings", label: "Settings", icon: Settings },
+  { to: "/system", label: "System", icon: Terminal },
 ];
 
 interface SidebarProps {
   isConnected: boolean;
+  lastActivity?: ActivityEntry | null;
 }
 
-const Sidebar: React.FC<SidebarProps> = ({ isConnected }) => {
+const levelColors: Record<string, string> = {
+  success: "text-emerald-400",
+  info: "text-blue-400",
+  warning: "text-amber-400",
+  error: "text-red-400",
+};
+
+const Sidebar: React.FC<SidebarProps> = ({ isConnected, lastActivity }) => {
   return (
     <aside className="fixed left-0 top-0 h-screen w-64 bg-panel border-r border-panel-border flex flex-col z-30">
       {/* Logo */}
@@ -62,9 +73,23 @@ const Sidebar: React.FC<SidebarProps> = ({ isConnected }) => {
           >
             <item.icon className="w-5 h-5 flex-shrink-0" />
             <span>{item.label}</span>
+            {item.to === "/system" && lastActivity && (
+              <span className="ml-auto w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+            )}
           </NavLink>
         ))}
       </nav>
+
+      {/* Live activity ticker */}
+      {lastActivity && (
+        <div className="px-4 py-3 border-t border-panel-border bg-gray-900/50">
+          <p className="text-[9px] text-gray-600 uppercase tracking-wider mb-1">Latest activity</p>
+          <p className={`text-[10px] leading-tight line-clamp-2 ${levelColors[lastActivity.level] ?? "text-gray-400"}`}>
+            <span className="font-semibold">[{lastActivity.service}]</span>{" "}
+            {lastActivity.message}
+          </p>
+        </div>
+      )}
 
       {/* System Status */}
       <div className="px-4 py-4 border-t border-panel-border">
