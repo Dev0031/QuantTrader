@@ -5,6 +5,7 @@ using Microsoft.IdentityModel.Tokens;
 using QuantTrader.ApiGateway.Hubs;
 using QuantTrader.ApiGateway.Middleware;
 using QuantTrader.ApiGateway.Services;
+using QuantTrader.ApiGateway.Workers;
 using QuantTrader.Common.Configuration;
 using QuantTrader.Infrastructure.Extensions;
 using Serilog;
@@ -161,9 +162,18 @@ try
     builder.Services.AddInfrastructureHealthChecks();
 
     // ---------------------------------------------------------------------------
+    // HTTP clients for API verification
+    // ---------------------------------------------------------------------------
+    builder.Services.AddHttpClient("ApiVerification", client =>
+    {
+        client.Timeout = TimeSpan.FromSeconds(10);
+    });
+
+    // ---------------------------------------------------------------------------
     // Background services
     // ---------------------------------------------------------------------------
     builder.Services.AddHostedService<RealTimeNotifier>();
+    builder.Services.AddHostedService<PortfolioSyncWorker>();
 
     // ---------------------------------------------------------------------------
     // Rate Limiting

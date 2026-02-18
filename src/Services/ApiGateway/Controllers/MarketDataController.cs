@@ -4,6 +4,7 @@ using Microsoft.EntityFrameworkCore;
 using QuantTrader.ApiGateway.DTOs;
 using QuantTrader.Infrastructure.Database;
 using QuantTrader.Infrastructure.Redis;
+using StackExchange.Redis;
 
 namespace QuantTrader.ApiGateway.Controllers;
 
@@ -12,16 +13,22 @@ namespace QuantTrader.ApiGateway.Controllers;
 [Route("api/market")]
 public sealed class MarketDataController : ControllerBase
 {
+    private static readonly string[] DefaultSymbols =
+        ["BTCUSDT", "ETHUSDT", "SOLUSDT", "BNBUSDT", "XRPUSDT"];
+
     private readonly IRedisCacheService _redis;
+    private readonly IConnectionMultiplexer _redisConnection;
     private readonly TradingDbContext _db;
     private readonly ILogger<MarketDataController> _logger;
 
     public MarketDataController(
         IRedisCacheService redis,
+        IConnectionMultiplexer redisConnection,
         TradingDbContext db,
         ILogger<MarketDataController> logger)
     {
         _redis = redis;
+        _redisConnection = redisConnection;
         _db = db;
         _logger = logger;
     }
@@ -83,23 +90,51 @@ public sealed class MarketDataController : ControllerBase
         return Ok(candles);
     }
 
-    /// <summary>Gets current prices for all tracked symbols from Redis.</summary>
+    /// <summary>Gets current prices for all tracked symbols by reading price:latest keys directly from Redis.</summary>
     [HttpGet("prices")]
     [AllowAnonymous]
     public async Task<IActionResult> GetAllPrices(CancellationToken ct)
     {
-        var snapshot = await _redis.GetPortfolioSnapshotAsync(ct);
-        if (snapshot is null)
+        var db = _redisConnection.GetDatabase();
+        var prices = new List<object>();
+
+        foreach (var symbol in DefaultSymbols)
         {
-            return Ok(Array.Empty<object>());
+            var raw = await db.StringGetAsync($"price:latest:{symbol}");
+            if (!raw.IsNullOrEmpty && decimal.TryParse(raw.ToString(), out var price))
+            {
+                prices.Add(new
+                {
+                    symbol,
+                    price,
+                    volume = 0m,
+                    bid = price,
+                    ask = price,
+                    timestamp = DateTimeOffset.UtcNow
+                });
+            }
         }
 
-        var prices = snapshot.Positions.Select(p => new
+        // Fallback: if no price:latest keys found, try tick:latest keys (written by PortfolioSyncWorker)
+        if (prices.Count == 0)
         {
-            p.Symbol,
-            Price = p.CurrentPrice,
-            Timestamp = snapshot.Timestamp
-        });
+            foreach (var symbol in DefaultSymbols)
+            {
+                var tick = await _redis.GetLatestTickAsync(symbol, ct);
+                if (tick is not null)
+                {
+                    prices.Add(new
+                    {
+                        symbol = tick.Symbol,
+                        price = tick.Price,
+                        volume = tick.Volume,
+                        bid = tick.BidPrice,
+                        ask = tick.AskPrice,
+                        timestamp = tick.Timestamp
+                    });
+                }
+            }
+        }
 
         return Ok(prices);
     }

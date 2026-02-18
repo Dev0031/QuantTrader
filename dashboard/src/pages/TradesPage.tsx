@@ -9,10 +9,13 @@ import {
 } from "lucide-react";
 import TradeTable from "@/components/common/TradeTable";
 import StatCard from "@/components/common/StatCard";
-import { useTrades, useTradeStats } from "@/api/hooks";
+import PageGuide from "@/components/common/PageGuide";
+import DataStatusBanner from "@/components/common/DataStatusBanner";
+import { useTrades, useTradeStats, useSetupStatus } from "@/api/hooks";
 import type { TradeFilter } from "@/api/types";
 
 const TradesPage: React.FC = () => {
+  const setupStatus = useSetupStatus();
   const [filters, setFilters] = useState<TradeFilter>({
     page: 1,
     pageSize: 20,
@@ -50,6 +53,24 @@ const TradesPage: React.FC = () => {
 
   return (
     <div className="space-y-6">
+      <PageGuide pageId="trades">
+        <p><strong>What you see:</strong> Complete history of all executed trades with performance statistics.</p>
+        <p><strong>Stats:</strong> Win Rate (% of profitable trades), Profit Factor (gross profit / gross loss, &gt;1 = profitable), Avg R:R (average risk-to-reward ratio).</p>
+        <p><strong>Filters:</strong> Narrow trades by symbol (e.g., BTCUSDT), side (Buy/Sell), or date range.</p>
+        <p><strong>How trades happen:</strong> Strategy Engine detects opportunity, Risk Manager validates (position size, stop-loss), Execution Engine places order on Binance, trade recorded here.</p>
+        <p><strong>P&L colors:</strong> Green = profit, Red = loss. "-" means position still open.</p>
+      </PageGuide>
+
+      {!setupStatus.isReady && (
+        <DataStatusBanner
+          type="warning"
+          title="No trades yet"
+          message="Configure Binance API key to start automated trading."
+          action={{ label: "Configure Now", href: "/settings" }}
+          dismissKey="trades-binance"
+        />
+      )}
+
       <div className="flex items-center justify-between">
         <h1 className="text-xl font-semibold text-white">Trade History</h1>
         <button

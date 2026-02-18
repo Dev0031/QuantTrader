@@ -11,6 +11,8 @@ import {
   AlertCircle,
 } from "lucide-react";
 import StatusBadge from "@/components/common/StatusBadge";
+import PageGuide from "@/components/common/PageGuide";
+import DataStatusBanner from "@/components/common/DataStatusBanner";
 import {
   useRiskMetrics,
   useRiskAlerts,
@@ -71,6 +73,21 @@ const RiskPage: React.FC = () => {
 
   return (
     <div className="space-y-6">
+      <PageGuide pageId="risk">
+        <p><strong>Why risk management:</strong> Protects your capital from catastrophic losses. Professional traders never risk more than 1-2% per trade.</p>
+        <p><strong>Drawdown Gauge:</strong> Shows how far your portfolio has fallen from its peak. Green (&lt;50% of limit), Yellow (50-75%), Red (&gt;75%).</p>
+        <p><strong>Kill Switch:</strong> Emergency stop button. When activated: cancels all pending orders, prevents new trades. Use when market is crashing or system misbehaves.</p>
+        <p><strong>Risk Settings:</strong> Max Risk Per Trade (recommended 1-2%), Max Drawdown (triggers kill switch, recommended 5-8%), Max Daily Loss (dollar limit per day).</p>
+        <p><strong>Non-negotiable rules:</strong> Every trade has stop-loss. Max 1-2% risk per trade. Min 1:2 risk:reward ratio.</p>
+      </PageGuide>
+
+      <DataStatusBanner
+        type="info"
+        title="Risk metrics"
+        message="Risk metrics will populate once trading begins. Risk settings work independently."
+        dismissKey="risk-info"
+      />
+
       <div className="flex items-center justify-between">
         <h1 className="text-xl font-semibold text-white">Risk Controls</h1>
         <StatusBadge

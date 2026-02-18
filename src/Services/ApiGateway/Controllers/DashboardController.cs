@@ -4,6 +4,7 @@ using Microsoft.EntityFrameworkCore;
 using QuantTrader.ApiGateway.DTOs;
 using QuantTrader.Infrastructure.Database;
 using QuantTrader.Infrastructure.Redis;
+using StackExchange.Redis;
 
 namespace QuantTrader.ApiGateway.Controllers;
 
@@ -13,15 +14,18 @@ namespace QuantTrader.ApiGateway.Controllers;
 public sealed class DashboardController : ControllerBase
 {
     private readonly IRedisCacheService _redis;
+    private readonly IConnectionMultiplexer _redisConnection;
     private readonly TradingDbContext _db;
     private readonly ILogger<DashboardController> _logger;
 
     public DashboardController(
         IRedisCacheService redis,
+        IConnectionMultiplexer redisConnection,
         TradingDbContext db,
         ILogger<DashboardController> logger)
     {
         _redis = redis;
+        _redisConnection = redisConnection;
         _db = db;
         _logger = logger;
     }
@@ -94,7 +98,60 @@ public sealed class DashboardController : ControllerBase
         });
     }
 
-    /// <summary>Internal record for alert data stored in Redis.</summary>
+    /// <summary>Gets per-provider integration health status.</summary>
+    [HttpGet("integration-status")]
+    [AllowAnonymous]
+    public async Task<IActionResult> GetIntegrationStatus(CancellationToken ct)
+    {
+        var db = _redisConnection.GetDatabase();
+        var statuses = new List<IntegrationStatusResponse>();
+
+        // Check Binance (price:latest keys written by DataIngestion)
+        var btcPrice = await db.StringGetAsync("price:latest:BTCUSDT");
+        var binanceTtl = await db.KeyTimeToLiveAsync("price:latest:BTCUSDT");
+        statuses.Add(new IntegrationStatusResponse(
+            Provider: "Binance",
+            Status: !btcPrice.IsNullOrEmpty ? "Connected" : "Disconnected",
+            LastDataAt: !btcPrice.IsNullOrEmpty ? DateTimeOffset.UtcNow : null,
+            LastError: null,
+            DataPointsLast5Min: !btcPrice.IsNullOrEmpty ? 1 : 0));
+
+        // Check CoinGecko
+        var geckoData = await db.StringGetAsync("coingecko:BTCUSDT");
+        statuses.Add(new IntegrationStatusResponse(
+            Provider: "CoinGecko",
+            Status: !geckoData.IsNullOrEmpty ? "Connected" : "NotConfigured",
+            LastDataAt: !geckoData.IsNullOrEmpty ? DateTimeOffset.UtcNow : null,
+            LastError: null,
+            DataPointsLast5Min: !geckoData.IsNullOrEmpty ? 1 : 0));
+
+        // Check CryptoPanic
+        var newsData = await db.StringGetAsync("news:latest");
+        statuses.Add(new IntegrationStatusResponse(
+            Provider: "CryptoPanic",
+            Status: !newsData.IsNullOrEmpty ? "Connected" : "NotConfigured",
+            LastDataAt: !newsData.IsNullOrEmpty ? DateTimeOffset.UtcNow : null,
+            LastError: null,
+            DataPointsLast5Min: !newsData.IsNullOrEmpty ? 1 : 0));
+
+        // Check configured providers from settings
+        var settings = await _redis.GetAsync<List<SettingsEntry>>("settings:exchange", ct) ?? [];
+        foreach (var entry in settings)
+        {
+            if (!statuses.Any(s => string.Equals(s.Provider, entry.Exchange, StringComparison.OrdinalIgnoreCase)))
+            {
+                statuses.Add(new IntegrationStatusResponse(
+                    Provider: entry.Exchange,
+                    Status: entry.Status == "Verified" ? "Connected" : "Disconnected",
+                    LastDataAt: entry.LastVerified,
+                    LastError: null,
+                    DataPointsLast5Min: 0));
+            }
+        }
+
+        return Ok(statuses);
+    }
+
     private sealed record AlertRecord(
         string AlertType,
         string Message,
@@ -102,9 +159,13 @@ public sealed class DashboardController : ControllerBase
         double Severity,
         DateTimeOffset Timestamp);
 
-    /// <summary>Internal record for per-service health status stored in Redis.</summary>
     private sealed record ServiceHealthRecord(
         string Status,
         DateTimeOffset LastChecked,
         string? Message);
+
+    private sealed record SettingsEntry(
+        string Exchange,
+        string Status,
+        DateTimeOffset? LastVerified);
 }

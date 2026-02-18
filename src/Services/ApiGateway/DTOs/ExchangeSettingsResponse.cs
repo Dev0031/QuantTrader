@@ -13,7 +13,7 @@ public sealed record ExchangeSettingsResponse(
 public sealed record SaveExchangeSettingsRequest(
     string Exchange,
     string ApiKey,
-    string ApiSecret,
+    string? ApiSecret,
     bool UseTestnet);
 
 /// <summary>Response DTO showing required API keys and their status.</summary>
@@ -23,3 +23,32 @@ public sealed record ApiKeyStatusResponse(
     bool IsConfigured,
     string? MaskedKey,
     string Status);
+
+/// <summary>Metadata about a supported API provider.</summary>
+public sealed record ApiProviderInfoResponse(
+    string Name,
+    bool RequiresApiKey,
+    bool RequiresApiSecret,
+    bool SupportsTestnet,
+    bool IsRequired,
+    string Description,
+    string[] Features,
+    bool IsConfigured,
+    string? MaskedKey,
+    string Status,
+    DateTimeOffset? LastVerified);
+
+/// <summary>Result of verifying an API provider connection.</summary>
+public sealed record VerificationResultResponse(
+    bool Success,
+    string Status,
+    string Message,
+    long LatencyMs);
+
+/// <summary>Health status of a data integration.</summary>
+public sealed record IntegrationStatusResponse(
+    string Provider,
+    string Status,
+    DateTimeOffset? LastDataAt,
+    string? LastError,
+    int DataPointsLast5Min);

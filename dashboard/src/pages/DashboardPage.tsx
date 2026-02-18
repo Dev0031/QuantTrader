@@ -8,11 +8,14 @@ import {
 import StatCard from "@/components/common/StatCard";
 import EquityChart from "@/components/charts/EquityChart";
 import TradeTable from "@/components/common/TradeTable";
+import PageGuide from "@/components/common/PageGuide";
+import DataStatusBanner from "@/components/common/DataStatusBanner";
 import {
   usePortfolioOverview,
   useEquityCurve,
   useRecentTrades,
   useMarketPrices,
+  useSetupStatus,
 } from "@/api/hooks";
 import type { MarketTick, Trade } from "@/api/types";
 
@@ -28,6 +31,7 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ lastTick }) => {
   const { data: equityCurve } = useEquityCurve(30);
   const { data: recentTrades } = useRecentTrades(10);
   const { data: marketPrices } = useMarketPrices(WATCHED_SYMBOLS);
+  const setupStatus = useSetupStatus();
 
   if (portfolioLoading) {
     return (
@@ -44,6 +48,26 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ lastTick }) => {
 
   return (
     <div className="space-y-6">
+      <PageGuide pageId="dashboard">
+        <p><strong>Portfolio Equity:</strong> Your total account value including all open positions. Updated every 15 seconds.</p>
+        <p><strong>Today's P&L:</strong> Profit or loss from trades closed since midnight UTC.</p>
+        <p><strong>Open Positions:</strong> Number of active trades currently held.</p>
+        <p><strong>Drawdown:</strong> Current decline from your portfolio's peak value. Kill switch triggers if this exceeds your limit.</p>
+        <p><strong>Equity Curve:</strong> Visual history of your portfolio value over 30 days. Flat line = no trading activity.</p>
+        <p><strong>Live Prices:</strong> Real-time prices from Binance WebSocket. Yellow flash = price just updated. "--" = no data (check Binance connection in Settings).</p>
+        <p><strong>Requires:</strong> Binance API key configured in Settings for trading data. Prices stream automatically from public WebSocket.</p>
+      </PageGuide>
+
+      {!setupStatus.isReady && (
+        <DataStatusBanner
+          type="error"
+          title="Trading data unavailable"
+          message="Configure your Binance API key in Settings to see portfolio, prices, and trades."
+          action={{ label: "Go to Settings", href: "/settings" }}
+          dismissKey="dashboard-binance"
+        />
+      )}
+
       {/* Stats Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         <StatCard

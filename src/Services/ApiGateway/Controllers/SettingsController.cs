@@ -1,3 +1,5 @@
+using System.Diagnostics;
+using System.Net.Http;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using QuantTrader.ApiGateway.DTOs;
@@ -11,15 +13,67 @@ namespace QuantTrader.ApiGateway.Controllers;
 public sealed class SettingsController : ControllerBase
 {
     private readonly IRedisCacheService _redis;
+    private readonly IHttpClientFactory _httpClientFactory;
     private readonly ILogger<SettingsController> _logger;
 
     private const string ExchangeSettingsKey = "settings:exchange";
-    private const string ApiKeysPrefix = "settings:apikeys:";
 
-    public SettingsController(IRedisCacheService redis, ILogger<SettingsController> logger)
+    private static readonly ProviderDefinition[] Providers =
+    [
+        new("Binance", true, true, true, true,
+            "Main exchange for trading, real-time prices, and account data",
+            ["Live price streaming (WebSocket)", "Spot & margin trading", "Account balance & history", "Order placement & management"]),
+        new("Bybit", true, true, true, false,
+            "Alternative exchange for multi-exchange strategies",
+            ["Spot & derivatives trading", "Account data", "Order management"]),
+        new("OKX", true, true, true, false,
+            "Alternative exchange for diversified order routing",
+            ["Spot & derivatives trading", "Demo trading mode", "Account data"]),
+        new("CoinGecko", false, false, false, false,
+            "Market data aggregator. Free tier works without API key. Pro key increases rate limits to 500 req/min.",
+            ["Market cap & volume data", "Price feeds for 10,000+ coins", "Historical OHLC data", "Works free without key"]),
+        new("CryptoPanic", true, false, false, false,
+            "News and sentiment feed for news-based trading signals. Free API key required.",
+            ["Real-time crypto news", "Sentiment analysis", "Community voting data"]),
+    ];
+
+    public SettingsController(
+        IRedisCacheService redis,
+        IHttpClientFactory httpClientFactory,
+        ILogger<SettingsController> logger)
     {
         _redis = redis;
+        _httpClientFactory = httpClientFactory;
         _logger = logger;
+    }
+
+    /// <summary>Gets metadata for all supported API providers with current config status.</summary>
+    [HttpGet("providers")]
+    [AllowAnonymous]
+    public async Task<IActionResult> GetProviders(CancellationToken ct)
+    {
+        var settings = await _redis.GetAsync<List<StoredExchangeSettings>>(ExchangeSettingsKey, ct) ?? [];
+
+        var result = Providers.Select(p =>
+        {
+            var configured = settings.FirstOrDefault(s =>
+                string.Equals(s.Exchange, p.Name, StringComparison.OrdinalIgnoreCase));
+
+            return new ApiProviderInfoResponse(
+                Name: p.Name,
+                RequiresApiKey: p.RequiresKey,
+                RequiresApiSecret: p.RequiresSecret,
+                SupportsTestnet: p.SupportsTestnet,
+                IsRequired: p.IsRequired,
+                Description: p.Description,
+                Features: p.Features,
+                IsConfigured: configured is not null,
+                MaskedKey: configured is not null ? MaskKey(configured.ApiKey) : null,
+                Status: configured?.Status ?? "Not Configured",
+                LastVerified: configured?.LastVerified);
+        });
+
+        return Ok(result);
     }
 
     /// <summary>Gets all configured exchange connections.</summary>
@@ -44,7 +98,7 @@ public sealed class SettingsController : ControllerBase
         return Ok(response);
     }
 
-    /// <summary>Saves or updates an exchange connection.</summary>
+    /// <summary>Saves or updates an exchange connection with conditional validation.</summary>
     [HttpPost("exchanges")]
     [AllowAnonymous]
     public async Task<IActionResult> SaveExchangeSettings(
@@ -54,22 +108,28 @@ public sealed class SettingsController : ControllerBase
         if (string.IsNullOrWhiteSpace(request.Exchange))
             return BadRequest(new { message = "Exchange is required" });
 
-        if (string.IsNullOrWhiteSpace(request.ApiKey))
-            return BadRequest(new { message = "API Key is required" });
+        var provider = Providers.FirstOrDefault(p =>
+            string.Equals(p.Name, request.Exchange, StringComparison.OrdinalIgnoreCase));
 
-        if (string.IsNullOrWhiteSpace(request.ApiSecret))
-            return BadRequest(new { message = "API Secret is required" });
+        if (provider is null)
+            return BadRequest(new { message = $"Unknown provider: {request.Exchange}" });
 
-        var settings = await _redis.GetAsync<List<StoredExchangeSettings>>(ExchangeSettingsKey, ct)
-                       ?? [];
+        // Conditional validation based on provider requirements
+        if (provider.RequiresKey && string.IsNullOrWhiteSpace(request.ApiKey))
+            return BadRequest(new { message = $"API Key is required for {provider.Name}" });
+
+        if (provider.RequiresSecret && string.IsNullOrWhiteSpace(request.ApiSecret))
+            return BadRequest(new { message = $"API Secret is required for {provider.Name}" });
+
+        var settings = await _redis.GetAsync<List<StoredExchangeSettings>>(ExchangeSettingsKey, ct) ?? [];
 
         var existing = settings.FindIndex(s =>
             string.Equals(s.Exchange, request.Exchange, StringComparison.OrdinalIgnoreCase));
 
         var entry = new StoredExchangeSettings(
             Exchange: request.Exchange,
-            ApiKey: request.ApiKey,
-            ApiSecret: request.ApiSecret,
+            ApiKey: request.ApiKey ?? "",
+            ApiSecret: request.ApiSecret ?? "",
             UseTestnet: request.UseTestnet,
             Status: "Configured",
             LastVerified: null,
@@ -89,7 +149,7 @@ public sealed class SettingsController : ControllerBase
         return Ok(new ExchangeSettingsResponse(
             Exchange: entry.Exchange,
             ApiKeyMasked: MaskKey(entry.ApiKey),
-            HasSecret: true,
+            HasSecret: !string.IsNullOrEmpty(entry.ApiSecret),
             UseTestnet: entry.UseTestnet,
             Status: entry.Status,
             LastVerified: entry.LastVerified));
@@ -117,7 +177,7 @@ public sealed class SettingsController : ControllerBase
         return Ok(new { message = $"Settings for {exchange} deleted" });
     }
 
-    /// <summary>Verifies an exchange connection by attempting a lightweight API call.</summary>
+    /// <summary>Verifies an exchange connection by making a real API call.</summary>
     [HttpPost("exchanges/{exchange}/verify")]
     [AllowAnonymous]
     public async Task<IActionResult> VerifyExchangeSettings(string exchange, CancellationToken ct)
@@ -129,14 +189,24 @@ public sealed class SettingsController : ControllerBase
         if (entry is null)
             return NotFound(new { message = $"No settings found for {exchange}" });
 
-        // For now, mark as verified. In production, this would call the exchange API.
-        var updated = entry with { Status = "Verified", LastVerified = DateTimeOffset.UtcNow };
-        var idx = settings!.FindIndex(s =>
-            string.Equals(s.Exchange, exchange, StringComparison.OrdinalIgnoreCase));
-        settings[idx] = updated;
-        await _redis.SetAsync(ExchangeSettingsKey, settings, ct: ct);
+        var sw = Stopwatch.StartNew();
+        var (success, message) = await VerifyProviderAsync(exchange, entry, ct);
+        sw.Stop();
 
-        return Ok(new { message = "Connection verified", status = "Verified" });
+        if (success)
+        {
+            var updated = entry with { Status = "Verified", LastVerified = DateTimeOffset.UtcNow };
+            var idx = settings!.FindIndex(s =>
+                string.Equals(s.Exchange, exchange, StringComparison.OrdinalIgnoreCase));
+            settings[idx] = updated;
+            await _redis.SetAsync(ExchangeSettingsKey, settings, ct: ct);
+        }
+
+        return Ok(new VerificationResultResponse(
+            Success: success,
+            Status: success ? "Verified" : "Failed",
+            Message: message,
+            LatencyMs: sw.ElapsedMilliseconds));
     }
 
     /// <summary>Gets the status of all required API keys for the system.</summary>
@@ -144,26 +214,16 @@ public sealed class SettingsController : ControllerBase
     [AllowAnonymous]
     public async Task<IActionResult> GetApiKeyStatus(CancellationToken ct)
     {
-        var settings = await _redis.GetAsync<List<StoredExchangeSettings>>(ExchangeSettingsKey, ct)
-                       ?? [];
+        var settings = await _redis.GetAsync<List<StoredExchangeSettings>>(ExchangeSettingsKey, ct) ?? [];
 
-        var requiredKeys = new[]
-        {
-            new { Name = "Binance", Description = "Main exchange for trading (spot & futures). Required for live trading." },
-            new { Name = "Bybit", Description = "Alternative exchange. Optional backup for order routing." },
-            new { Name = "OKX", Description = "Alternative exchange. Optional for multi-exchange strategies." },
-            new { Name = "CoinGecko", Description = "Market data aggregator. Used for sentiment and price feeds." },
-            new { Name = "CryptoPanic", Description = "News/sentiment feed. Used for news-based trading signals." },
-        };
-
-        var result = requiredKeys.Select(rk =>
+        var result = Providers.Select(p =>
         {
             var configured = settings.FirstOrDefault(s =>
-                string.Equals(s.Exchange, rk.Name, StringComparison.OrdinalIgnoreCase));
+                string.Equals(s.Exchange, p.Name, StringComparison.OrdinalIgnoreCase));
 
             return new ApiKeyStatusResponse(
-                Name: rk.Name,
-                Description: rk.Description,
+                Name: p.Name,
+                Description: p.Description,
                 IsConfigured: configured is not null,
                 MaskedKey: configured is not null ? MaskKey(configured.ApiKey) : null,
                 Status: configured?.Status ?? "Not Configured");
@@ -172,9 +232,57 @@ public sealed class SettingsController : ControllerBase
         return Ok(result);
     }
 
+    private async Task<(bool Success, string Message)> VerifyProviderAsync(
+        string exchange, StoredExchangeSettings entry, CancellationToken ct)
+    {
+        try
+        {
+            var client = _httpClientFactory.CreateClient("ApiVerification");
+
+            var url = exchange.ToLowerInvariant() switch
+            {
+                "binance" => entry.UseTestnet
+                    ? "https://testnet.binance.vision/api/v3/ping"
+                    : "https://api.binance.com/api/v3/ping",
+                "coingecko" => "https://api.coingecko.com/api/v3/ping",
+                "cryptopanic" => string.IsNullOrEmpty(entry.ApiKey)
+                    ? null
+                    : $"https://cryptopanic.com/api/free/v1/posts/?auth_token={entry.ApiKey}&limit=1",
+                "bybit" => entry.UseTestnet
+                    ? "https://api-testnet.bybit.com/v5/market/time"
+                    : "https://api.bybit.com/v5/market/time",
+                "okx" => "https://www.okx.com/api/v5/public/time",
+                _ => null
+            };
+
+            if (url is null)
+                return (false, $"Verification not supported for {exchange}");
+
+            var response = await client.GetAsync(url, ct);
+
+            if (response.IsSuccessStatusCode)
+                return (true, $"{exchange} connection successful");
+
+            return (false, $"{exchange} returned HTTP {(int)response.StatusCode}");
+        }
+        catch (TaskCanceledException)
+        {
+            return (false, $"{exchange} connection timed out (>10s)");
+        }
+        catch (HttpRequestException ex)
+        {
+            return (false, $"{exchange} connection failed: {ex.Message}");
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Verification failed for {Exchange}", exchange);
+            return (false, $"Verification error: {ex.Message}");
+        }
+    }
+
     private static string MaskKey(string key)
     {
-        if (string.IsNullOrEmpty(key)) return "***";
+        if (string.IsNullOrEmpty(key)) return "";
         if (key.Length <= 8) return "****" + key[^2..];
         return key[..4] + "****" + key[^4..];
     }
@@ -188,4 +296,13 @@ public sealed class SettingsController : ControllerBase
         DateTimeOffset? LastVerified,
         DateTimeOffset CreatedAt,
         DateTimeOffset UpdatedAt);
+
+    private sealed record ProviderDefinition(
+        string Name,
+        bool RequiresKey,
+        bool RequiresSecret,
+        bool SupportsTestnet,
+        bool IsRequired,
+        string Description,
+        string[] Features);
 }

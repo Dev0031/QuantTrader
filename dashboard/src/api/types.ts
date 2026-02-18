@@ -135,7 +135,7 @@ export interface ExchangeSettings {
 export interface SaveExchangeSettingsRequest {
   exchange: string;
   apiKey: string;
-  apiSecret: string;
+  apiSecret: string | null;
   useTestnet: boolean;
 }
 
@@ -145,4 +145,40 @@ export interface ApiKeyStatus {
   isConfigured: boolean;
   maskedKey: string | null;
   status: string;
+}
+
+export interface ApiProviderInfo {
+  name: string;
+  requiresApiKey: boolean;
+  requiresApiSecret: boolean;
+  supportsTestnet: boolean;
+  isRequired: boolean;
+  description: string;
+  features: string[];
+  isConfigured: boolean;
+  maskedKey: string | null;
+  status: string;
+  lastVerified: string | null;
+}
+
+export interface VerificationResult {
+  success: boolean;
+  status: string;
+  message: string;
+  latencyMs: number;
+}
+
+export interface IntegrationStatus {
+  provider: string;
+  status: "Connected" | "Disconnected" | "Error" | "NotConfigured";
+  lastDataAt: string | null;
+  lastError: string | null;
+  dataPointsLast5Min: number;
+}
+
+export interface SetupStatus {
+  isReady: boolean;
+  missingRequired: string[];
+  errors: { provider: string; message: string; steps: string[] }[];
+  warnings: { provider: string; message: string }[];
 }

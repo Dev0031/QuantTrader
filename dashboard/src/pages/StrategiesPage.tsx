@@ -3,11 +3,14 @@ import { format } from "date-fns";
 import { Power, TrendingUp, BarChart3, Target } from "lucide-react";
 import { Switch } from "@headlessui/react";
 import StatusBadge from "@/components/common/StatusBadge";
-import { useStrategies, useToggleStrategy } from "@/api/hooks";
+import PageGuide from "@/components/common/PageGuide";
+import DataStatusBanner from "@/components/common/DataStatusBanner";
+import { useStrategies, useToggleStrategy, useSetupStatus } from "@/api/hooks";
 
 const StrategiesPage: React.FC = () => {
   const { data: strategies, isLoading } = useStrategies();
   const toggleStrategy = useToggleStrategy();
+  const setupStatus = useSetupStatus();
 
   const handleToggle = (name: string, currentEnabled: boolean) => {
     toggleStrategy.mutate({ name, enabled: !currentEnabled });
@@ -23,6 +26,25 @@ const StrategiesPage: React.FC = () => {
 
   return (
     <div className="space-y-6">
+      <PageGuide pageId="strategies">
+        <p><strong>What is a strategy:</strong> Automated trading rules that monitor market data and generate buy/sell signals. Examples: Moving Average Crossover, Momentum, Mean Reversion.</p>
+        <p><strong>Enable/Disable toggle:</strong> Turn strategies on/off without deleting them. Disabled strategies stop generating signals.</p>
+        <p><strong>Total P&L:</strong> Cumulative profit/loss from all trades this strategy executed.</p>
+        <p><strong>Win Rate:</strong> Percentage of trades that were profitable. &gt;50% is good.</p>
+        <p><strong>Sharpe Ratio:</strong> Risk-adjusted return. &gt;1 = good, &gt;2 = excellent, &lt;0 = losing money.</p>
+        <p><strong>How it works:</strong> Strategy monitors prices, generates signal when conditions met, Risk Manager checks sizing/stop-loss/drawdown, if approved Execution Engine places order.</p>
+      </PageGuide>
+
+      {!setupStatus.isReady && (
+        <DataStatusBanner
+          type="warning"
+          title="Strategies need exchange connection"
+          message="Strategies require Binance API key to execute trades."
+          action={{ label: "Configure Now", href: "/settings" }}
+          dismissKey="strategies-binance"
+        />
+      )}
+
       <div className="flex items-center justify-between">
         <h1 className="text-xl font-semibold text-white">Strategy Manager</h1>
         <span className="text-sm text-gray-400">

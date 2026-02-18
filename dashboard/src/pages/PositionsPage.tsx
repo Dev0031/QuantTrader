@@ -1,7 +1,9 @@
 import React from "react";
 import { X } from "lucide-react";
 import StatusBadge from "@/components/common/StatusBadge";
-import { usePositions, useClosePosition } from "@/api/hooks";
+import PageGuide from "@/components/common/PageGuide";
+import DataStatusBanner from "@/components/common/DataStatusBanner";
+import { usePositions, useClosePosition, useSetupStatus } from "@/api/hooks";
 import type { MarketTick } from "@/api/types";
 
 interface PositionsPageProps {
@@ -11,6 +13,7 @@ interface PositionsPageProps {
 const PositionsPage: React.FC<PositionsPageProps> = ({ lastTick }) => {
   const { data: positions, isLoading } = usePositions();
   const closePosition = useClosePosition();
+  const setupStatus = useSetupStatus();
 
   const handleClose = (symbol: string) => {
     if (window.confirm(`Close position on ${symbol}?`)) {
@@ -36,6 +39,26 @@ const PositionsPage: React.FC<PositionsPageProps> = ({ lastTick }) => {
 
   return (
     <div className="space-y-6">
+      <PageGuide pageId="positions">
+        <p><strong>What you see:</strong> All currently open trading positions with real-time pricing.</p>
+        <p><strong>Side:</strong> Long = bought, profiting when price rises. Short = sold, profiting when price falls.</p>
+        <p><strong>Current Price:</strong> Yellow highlight = real-time WebSocket update. White = last known price.</p>
+        <p><strong>Unrealized P&L:</strong> What you'd gain/lose if this position closed right now. Updates with price.</p>
+        <p><strong>Stop Loss:</strong> Price at which position auto-closes to limit losses. Every trade MUST have one (risk rule).</p>
+        <p><strong>Take Profit:</strong> Price target for automatic profit-taking.</p>
+        <p><strong>Close button:</strong> Manually close at current market price. Requires confirmation.</p>
+      </PageGuide>
+
+      {!setupStatus.isReady && (
+        <DataStatusBanner
+          type="warning"
+          title="Cannot display positions"
+          message="Binance API key required to view and manage positions."
+          action={{ label: "Configure Now", href: "/settings" }}
+          dismissKey="positions-binance"
+        />
+      )}
+
       <div className="flex items-center justify-between">
         <h1 className="text-xl font-semibold text-white">Open Positions</h1>
         <span className="text-sm text-gray-400">
