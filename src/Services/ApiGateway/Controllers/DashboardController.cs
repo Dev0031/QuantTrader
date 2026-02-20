@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using QuantTrader.ApiGateway.DTOs;
+using QuantTrader.Common.Models;
 using QuantTrader.Infrastructure.Database;
 using QuantTrader.Infrastructure.Redis;
 using StackExchange.Redis;
@@ -35,12 +36,22 @@ public sealed class DashboardController : ControllerBase
     [AllowAnonymous]
     public async Task<IActionResult> GetOverview(CancellationToken ct)
     {
-        var snapshot = await _redis.GetPortfolioSnapshotAsync(ct);
+        PortfolioSnapshot? snapshot = null;
+        try { snapshot = await _redis.GetPortfolioSnapshotAsync(ct); }
+        catch (Exception ex) { _logger.LogWarning(ex, "Redis unavailable for portfolio snapshot"); }
 
-        var todayStart = DateTimeOffset.UtcNow.Date;
-        var todayPnl = await _db.Trades
-            .Where(t => t.ExitTime != null && t.ExitTime >= todayStart)
-            .SumAsync(t => t.RealizedPnl, ct);
+        decimal todayPnl = 0m;
+        try
+        {
+            var todayStart = DateTimeOffset.UtcNow.Date;
+            todayPnl = await _db.Trades
+                .Where(t => t.ExitTime != null && t.ExitTime >= todayStart)
+                .SumAsync(t => t.RealizedPnl, ct);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Database unavailable for today P&L — returning 0");
+        }
 
         var response = new PortfolioOverviewResponse(
             TotalEquity: snapshot?.TotalEquity ?? 0m,
