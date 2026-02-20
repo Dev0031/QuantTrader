@@ -1,21 +1,32 @@
-import React, { useState } from "react";
+import React, { useState, Suspense, lazy } from "react";
 import { Routes, Route } from "react-router-dom";
 import Sidebar from "./components/layout/Sidebar";
 import Header from "./components/layout/Header";
-import DashboardPage from "./pages/DashboardPage";
-import TradesPage from "./pages/TradesPage";
-import PositionsPage from "./pages/PositionsPage";
-import StrategiesPage from "./pages/StrategiesPage";
-import RiskPage from "./pages/RiskPage";
-import SettingsPage from "./pages/SettingsPage";
-import SystemPage from "./pages/SystemPage";
 import { ToastProvider } from "./components/common/Toast";
 import SetupWizard from "./components/common/SetupWizard";
-import { useSignalR } from "./hooks/useSignalR";
+import { ErrorBoundary } from "./components/ui/ErrorBoundary";
+import { ConnectionProvider, useConnection } from "./contexts/ConnectionContext";
 import { usePortfolioOverview, useApiProviders } from "./api/hooks";
 
-const App: React.FC = () => {
-  const { isConnected, lastTick, lastTrade, lastActivity } = useSignalR();
+// Lazy-loaded pages — each loads only when navigated to
+const DashboardPage = lazy(() => import("./pages/DashboardPage"));
+const TradesPage = lazy(() => import("./pages/TradesPage"));
+const PositionsPage = lazy(() => import("./pages/PositionsPage"));
+const StrategiesPage = lazy(() => import("./pages/StrategiesPage"));
+const RiskPage = lazy(() => import("./pages/RiskPage"));
+const SettingsPage = lazy(() => import("./pages/SettingsPage"));
+const SystemPage = lazy(() => import("./pages/SystemPage"));
+
+function PageSpinner() {
+  return (
+    <div className="flex items-center justify-center h-64">
+      <div className="w-8 h-8 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
+    </div>
+  );
+}
+
+function AppInner() {
+  const { isConnected, lastTick, lastTrade, lastActivity } = useConnection();
   const { data: portfolio } = usePortfolioOverview();
   const { data: providers } = useApiProviders();
 
@@ -46,29 +57,86 @@ const App: React.FC = () => {
               <Route
                 path="/"
                 element={
-                  <DashboardPage
-                    lastTick={lastTick}
-                    lastTrade={lastTrade}
-                  />
+                  <ErrorBoundary>
+                    <Suspense fallback={<PageSpinner />}>
+                      <DashboardPage lastTick={lastTick} lastTrade={lastTrade} />
+                    </Suspense>
+                  </ErrorBoundary>
                 }
               />
-              <Route path="/trades" element={<TradesPage />} />
+              <Route
+                path="/trades"
+                element={
+                  <ErrorBoundary>
+                    <Suspense fallback={<PageSpinner />}>
+                      <TradesPage />
+                    </Suspense>
+                  </ErrorBoundary>
+                }
+              />
               <Route
                 path="/positions"
-                element={<PositionsPage lastTick={lastTick} />}
+                element={
+                  <ErrorBoundary>
+                    <Suspense fallback={<PageSpinner />}>
+                      <PositionsPage lastTick={lastTick} />
+                    </Suspense>
+                  </ErrorBoundary>
+                }
               />
-              <Route path="/strategies" element={<StrategiesPage />} />
+              <Route
+                path="/strategies"
+                element={
+                  <ErrorBoundary>
+                    <Suspense fallback={<PageSpinner />}>
+                      <StrategiesPage />
+                    </Suspense>
+                  </ErrorBoundary>
+                }
+              />
               <Route
                 path="/risk"
-                element={<RiskPage />}
+                element={
+                  <ErrorBoundary>
+                    <Suspense fallback={<PageSpinner />}>
+                      <RiskPage />
+                    </Suspense>
+                  </ErrorBoundary>
+                }
               />
-              <Route path="/settings" element={<SettingsPage />} />
-              <Route path="/system" element={<SystemPage />} />
+              <Route
+                path="/settings"
+                element={
+                  <ErrorBoundary>
+                    <Suspense fallback={<PageSpinner />}>
+                      <SettingsPage />
+                    </Suspense>
+                  </ErrorBoundary>
+                }
+              />
+              <Route
+                path="/system"
+                element={
+                  <ErrorBoundary>
+                    <Suspense fallback={<PageSpinner />}>
+                      <SystemPage />
+                    </Suspense>
+                  </ErrorBoundary>
+                }
+              />
             </Routes>
           </main>
         </div>
       </div>
     </ToastProvider>
+  );
+}
+
+const App: React.FC = () => {
+  return (
+    <ConnectionProvider>
+      <AppInner />
+    </ConnectionProvider>
   );
 };
 

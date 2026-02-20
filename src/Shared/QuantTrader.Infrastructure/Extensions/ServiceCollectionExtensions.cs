@@ -3,14 +3,18 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
+using Microsoft.Extensions.Logging;
 using OpenTelemetry.Metrics;
 using OpenTelemetry.Resources;
 using OpenTelemetry.Trace;
+using QuantTrader.Common.Configuration;
+using QuantTrader.Common.Services;
 using QuantTrader.Infrastructure.Database;
 using QuantTrader.Infrastructure.HealthChecks;
 using QuantTrader.Infrastructure.KeyVault;
 using QuantTrader.Infrastructure.Messaging;
 using QuantTrader.Infrastructure.Redis;
+using QuantTrader.Infrastructure.Resilience;
 using StackExchange.Redis;
 
 namespace QuantTrader.Infrastructure.Extensions;
@@ -141,6 +145,29 @@ public static class ServiceCollectionExtensions
             .AddCheck<RedisHealthCheck>("redis", HealthStatus.Degraded, tags: ["ready", "infra"])
             .AddCheck<DatabaseHealthCheck>("database", HealthStatus.Unhealthy, tags: ["ready", "infra"]);
 
+        return services;
+    }
+
+    /// <summary>
+    /// Registers <see cref="ITradingModeProvider"/> and <see cref="TradingModeProvider"/> as singletons.
+    /// Services that need to know the current mode inject <see cref="ITradingModeProvider"/>.
+    /// </summary>
+    public static IServiceCollection AddTradingMode(this IServiceCollection services)
+    {
+        services.AddSingleton<ITradingModeProvider, TradingModeProvider>();
+        services.AddSingleton<ITimeProvider, SystemTimeProvider>();
+        return services;
+    }
+
+    /// <summary>
+    /// Registers the <see cref="CircuitBreakerState"/> singleton and <see cref="CircuitBreakerHealthCheck"/>.
+    /// Call this once per service host.
+    /// </summary>
+    public static IServiceCollection AddPollyPolicies(this IServiceCollection services)
+    {
+        services.AddSingleton<CircuitBreakerState>();
+        services.AddHealthChecks()
+            .AddCheck<CircuitBreakerHealthCheck>("circuit-breakers", HealthStatus.Degraded, tags: ["ready"]);
         return services;
     }
 }

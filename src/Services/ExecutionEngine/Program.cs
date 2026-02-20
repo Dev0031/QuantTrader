@@ -1,6 +1,8 @@
 using Microsoft.EntityFrameworkCore;
 using Serilog;
 using StackExchange.Redis;
+using QuantTrader.Common.Configuration;
+using QuantTrader.ExecutionEngine.Adapters;
 using QuantTrader.ExecutionEngine.Clients;
 using QuantTrader.ExecutionEngine.Services;
 using QuantTrader.ExecutionEngine.Workers;
@@ -22,6 +24,7 @@ builder.Host.UseSerilog((context, services, config) =>
 // Configuration
 builder.Services.Configure<BinanceTradeSettings>(builder.Configuration.GetSection(BinanceTradeSettings.SectionName));
 builder.Services.Configure<ExecutionSettings>(builder.Configuration.GetSection(ExecutionSettings.SectionName));
+builder.Services.Configure<TradingModeSettings>(builder.Configuration.GetSection(TradingModeSettings.SectionName));
 
 // Database
 builder.Services.AddDbContext<TradingDbContext>(options =>
@@ -48,6 +51,14 @@ builder.Services.AddSingleton<ISecretProvider>(sp =>
 
 // HttpClient for Binance
 builder.Services.AddHttpClient<IBinanceTradeClient, BinanceTradeClient>();
+
+// Trading Mode Provider
+builder.Services.AddSingleton<ITradingModeProvider, TradingModeProvider>();
+
+// Order Adapters
+builder.Services.AddSingleton<LiveOrderAdapter>();
+builder.Services.AddSingleton<PaperOrderAdapter>();
+builder.Services.AddSingleton<OrderAdapterFactory>();
 
 // Services
 builder.Services.AddScoped<IOrderExecutor, OrderExecutor>();

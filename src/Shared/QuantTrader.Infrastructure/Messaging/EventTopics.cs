@@ -10,4 +10,5 @@ public static class EventTopics
     public const string ExecutedOrders = "executed-orders";
     public const string RiskAlerts = "risk-alerts";
     public const string KillSwitch = "kill-switch";
+    public const string SystemHealth = "system-health";
 }

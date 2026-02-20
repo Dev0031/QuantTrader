@@ -1,6 +1,7 @@
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using QuantTrader.Common.Configuration;
+using QuantTrader.Common.Services;
 using QuantTrader.Infrastructure.Redis;
 
 namespace QuantTrader.RiskManager.Services;
@@ -13,6 +14,7 @@ public sealed class DrawdownMonitor : IDrawdownMonitor
 
     private readonly IRedisCacheService _cache;
     private readonly RiskSettings _settings;
+    private readonly ITimeProvider _time;
     private readonly ILogger<DrawdownMonitor> _logger;
 
     private decimal _peakEquity;
@@ -22,10 +24,12 @@ public sealed class DrawdownMonitor : IDrawdownMonitor
     public DrawdownMonitor(
         IRedisCacheService cache,
         IOptions<RiskSettings> settings,
+        ITimeProvider time,
         ILogger<DrawdownMonitor> logger)
     {
         _cache = cache ?? throw new ArgumentNullException(nameof(cache));
         _settings = settings?.Value ?? throw new ArgumentNullException(nameof(settings));
+        _time = time ?? throw new ArgumentNullException(nameof(time));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
 

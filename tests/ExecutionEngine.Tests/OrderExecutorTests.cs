@@ -1,12 +1,16 @@
 using FluentAssertions;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using Moq;
+using QuantTrader.Common.Configuration;
 using QuantTrader.Common.Enums;
 using QuantTrader.Common.Models;
+using QuantTrader.ExecutionEngine.Adapters;
 using QuantTrader.ExecutionEngine.Clients;
 using QuantTrader.ExecutionEngine.Models;
 using QuantTrader.ExecutionEngine.Services;
+using QuantTrader.TestInfrastructure.Helpers;
 
 namespace ExecutionEngine.Tests;
 
@@ -18,14 +22,26 @@ public class OrderExecutorTests
     public OrderExecutorTests()
     {
         _tradeClientMock = new Mock<IBinanceTradeClient>();
+
+        // Wire through OrderAdapterFactory in Live mode so IBinanceTradeClient mock is exercised
+        var liveAdapter = new LiveOrderAdapter(_tradeClientMock.Object, NullLogger<LiveOrderAdapter>.Instance);
+        var paperAdapter = new PaperOrderAdapter(
+            new FakeRedisCacheService(),
+            Options.Create(new TradingModeSettings { PaperFillLatencyMs = 0 }),
+            NullLogger<PaperOrderAdapter>.Instance);
+
+        var modeProvider = new Mock<ITradingModeProvider>();
+        modeProvider.Setup(m => m.CurrentMode).Returns(TradingMode.Live);
+
+        var factory = new OrderAdapterFactory(modeProvider.Object, liveAdapter, paperAdapter);
+
         var settings = Options.Create(new ExecutionSettings
         {
             MaxRetries = 3,
-            RetryDelayMs = 10 // short delay for tests
+            RetryDelayMs = 0  // no delay in tests
         });
-        var logger = Mock.Of<ILogger<OrderExecutor>>();
 
-        _executor = new OrderExecutor(_tradeClientMock.Object, settings, logger);
+        _executor = new OrderExecutor(factory, settings, NullLogger<OrderExecutor>.Instance);
     }
 
     private static Order CreateTestOrder(OrderType type = OrderType.Market)

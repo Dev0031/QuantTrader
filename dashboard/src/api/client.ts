@@ -25,6 +25,13 @@ apiClient.interceptors.response.use(
     if (error.response?.status === 401) {
       localStorage.removeItem("qt_auth_token");
     }
+    if (error.response?.status >= 500) {
+      window.dispatchEvent(
+        new CustomEvent("api-error", {
+          detail: { message: "Server error. The backend may be restarting." },
+        })
+      );
+    }
     return Promise.reject(error);
   }
 );

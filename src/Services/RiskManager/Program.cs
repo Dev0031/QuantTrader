@@ -1,6 +1,9 @@
 using QuantTrader.Common.Configuration;
+using QuantTrader.Common.Services;
+using QuantTrader.Infrastructure.Extensions;
 using QuantTrader.Infrastructure.Messaging;
 using QuantTrader.Infrastructure.Redis;
+using QuantTrader.Infrastructure.Resilience;
 using QuantTrader.RiskManager.Services;
 using QuantTrader.RiskManager.Workers;
 using Serilog;
@@ -24,6 +27,8 @@ try
     // Configuration
     builder.Services.Configure<RiskSettings>(
         builder.Configuration.GetSection(RiskSettings.SectionName));
+    builder.Services.Configure<TradingModeSettings>(
+        builder.Configuration.GetSection(TradingModeSettings.SectionName));
 
     // Event bus
     builder.Services.AddSingleton<IEventBus, InMemoryEventBus>();
@@ -37,6 +42,12 @@ try
         return ConnectionMultiplexer.Connect(config);
     });
     builder.Services.AddSingleton<IRedisCacheService, RedisCacheService>();
+
+    // Time provider (injectable clock for tests)
+    builder.Services.AddSingleton<ITimeProvider, SystemTimeProvider>();
+
+    // Circuit breaker state + health check
+    builder.Services.AddPollyPolicies();
 
     // Services
     builder.Services.AddSingleton<IPositionSizer, PositionSizer>();

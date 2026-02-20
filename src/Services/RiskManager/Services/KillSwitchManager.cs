@@ -3,6 +3,7 @@ using Microsoft.Extensions.Options;
 using QuantTrader.Common.Configuration;
 using QuantTrader.Common.Events;
 using QuantTrader.Common.Models;
+using QuantTrader.Common.Services;
 using QuantTrader.Infrastructure.Messaging;
 
 namespace QuantTrader.RiskManager.Services;
@@ -13,6 +14,7 @@ public sealed class KillSwitchManager : IKillSwitchManager
     private readonly IEventBus _eventBus;
     private readonly IDrawdownMonitor _drawdownMonitor;
     private readonly RiskSettings _settings;
+    private readonly ITimeProvider _time;
     private readonly ILogger<KillSwitchManager> _logger;
 
     private volatile bool _isActive;
@@ -23,11 +25,13 @@ public sealed class KillSwitchManager : IKillSwitchManager
         IEventBus eventBus,
         IDrawdownMonitor drawdownMonitor,
         IOptions<RiskSettings> settings,
+        ITimeProvider time,
         ILogger<KillSwitchManager> logger)
     {
         _eventBus = eventBus ?? throw new ArgumentNullException(nameof(eventBus));
         _drawdownMonitor = drawdownMonitor ?? throw new ArgumentNullException(nameof(drawdownMonitor));
         _settings = settings?.Value ?? throw new ArgumentNullException(nameof(settings));
+        _time = time ?? throw new ArgumentNullException(nameof(time));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
 
@@ -45,7 +49,7 @@ public sealed class KillSwitchManager : IKillSwitchManager
             Reason: reason,
             DrawdownPercent: _drawdownMonitor.CurrentDrawdownPercent,
             CorrelationId: Guid.NewGuid().ToString(),
-            Timestamp: DateTimeOffset.UtcNow,
+            Timestamp: _time.UtcNow,
             Source: nameof(KillSwitchManager));
 
         await _eventBus.PublishAsync(killEvent, EventTopics.KillSwitch, ct).ConfigureAwait(false);

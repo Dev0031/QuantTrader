@@ -1,5 +1,6 @@
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
+using QuantTrader.ApiGateway.Services;
 using QuantTrader.Common.Enums;
 using QuantTrader.Common.Models;
 using QuantTrader.Infrastructure.Database;
@@ -29,15 +30,18 @@ public sealed class PortfolioSyncWorker : BackgroundService
 
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly IConnectionMultiplexer _redis;
+    private readonly StaleDataFallbackService _fallback;
     private readonly ILogger<PortfolioSyncWorker> _logger;
 
     public PortfolioSyncWorker(
         IServiceScopeFactory scopeFactory,
         IConnectionMultiplexer redis,
+        StaleDataFallbackService fallback,
         ILogger<PortfolioSyncWorker> logger)
     {
         _scopeFactory = scopeFactory;
         _redis = redis;
+        _fallback = fallback;
         _logger = logger;
     }
 
@@ -88,6 +92,9 @@ public sealed class PortfolioSyncWorker : BackgroundService
 
             var json = JsonSerializer.Serialize(tick, JsonOptions);
             await db.StringSetAsync($"tick:latest:{symbol}", json, TickExpiry);
+
+            // Update fallback service with last-known-good tick
+            _fallback.UpdateTick(symbol, tick);
         }
 
         // 3. Read open positions from DB
@@ -147,6 +154,9 @@ public sealed class PortfolioSyncWorker : BackgroundService
         // 5. Write snapshot to Redis
         var snapshotJson = JsonSerializer.Serialize(snapshot, JsonOptions);
         await db.StringSetAsync("portfolio:snapshot", snapshotJson, SnapshotExpiry);
+
+        // Update fallback service with last-known-good snapshot
+        _fallback.UpdatePortfolio(snapshot);
 
         _logger.LogDebug("Portfolio snapshot updated: equity={Equity}, positions={Count}, prices={PriceCount}",
             totalEquity, positions.Count, prices.Count);

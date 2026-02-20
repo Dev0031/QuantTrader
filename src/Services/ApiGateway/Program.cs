@@ -173,6 +173,7 @@ try
     // Application services
     // ---------------------------------------------------------------------------
     builder.Services.AddSingleton<IActivityLogService, ActivityLogService>();
+    builder.Services.AddSingleton<StaleDataFallbackService>();
 
     // ---------------------------------------------------------------------------
     // Background services
@@ -258,3 +259,6 @@ finally
 {
     Log.CloseAndFlush();
 }
+
+// Required for WebApplicationFactory<Program> in integration tests
+public partial class Program { }

@@ -2,28 +2,27 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using QuantTrader.Common.Enums;
 using QuantTrader.Common.Models;
-using QuantTrader.ExecutionEngine.Clients;
+using QuantTrader.ExecutionEngine.Adapters;
 using QuantTrader.ExecutionEngine.Models;
 
 namespace QuantTrader.ExecutionEngine.Services;
 
 /// <summary>
-/// Executes orders against the exchange via IBinanceTradeClient.
+/// Executes orders via the configured order adapter (Live or Paper depending on TradingMode).
 /// Implements retry logic with exponential backoff (max 3 retries).
-/// Logs every order attempt and result.
 /// </summary>
 public sealed class OrderExecutor : IOrderExecutor
 {
-    private readonly IBinanceTradeClient _tradeClient;
+    private readonly OrderAdapterFactory _adapterFactory;
     private readonly ILogger<OrderExecutor> _logger;
     private readonly ExecutionSettings _settings;
 
     public OrderExecutor(
-        IBinanceTradeClient tradeClient,
+        OrderAdapterFactory adapterFactory,
         IOptions<ExecutionSettings> settings,
         ILogger<OrderExecutor> logger)
     {
-        _tradeClient = tradeClient ?? throw new ArgumentNullException(nameof(tradeClient));
+        _adapterFactory = adapterFactory ?? throw new ArgumentNullException(nameof(adapterFactory));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         _settings = settings?.Value ?? throw new ArgumentNullException(nameof(settings));
     }
@@ -32,9 +31,11 @@ public sealed class OrderExecutor : IOrderExecutor
     {
         ArgumentNullException.ThrowIfNull(order);
 
+        var adapter = _adapterFactory.Current;
+
         _logger.LogInformation(
-            "Placing order {OrderId}: {Type} {Side} {Quantity} {Symbol} @ {Price}",
-            order.Id, order.Type, order.Side, order.Quantity, order.Symbol, order.Price);
+            "Placing order {OrderId}: {Type} {Side} {Quantity} {Symbol} @ {Price} via {Adapter}",
+            order.Id, order.Type, order.Side, order.Quantity, order.Symbol, order.Price, adapter.Name);
 
         var lastResult = new OrderResult(false, null, "No attempts made", null);
 
@@ -46,16 +47,16 @@ public sealed class OrderExecutor : IOrderExecutor
             {
                 lastResult = order.Type switch
                 {
-                    OrderType.Market => await _tradeClient.PlaceMarketOrderAsync(
+                    OrderType.Market => await adapter.PlaceMarketOrderAsync(
                         order.Symbol, order.Side, order.Quantity, ct).ConfigureAwait(false),
 
-                    OrderType.Limit => await _tradeClient.PlaceLimitOrderAsync(
+                    OrderType.Limit => await adapter.PlaceLimitOrderAsync(
                         order.Symbol, order.Side, order.Quantity, order.Price ?? 0m, ct).ConfigureAwait(false),
 
-                    OrderType.StopLoss => await _tradeClient.PlaceStopLossOrderAsync(
+                    OrderType.StopLoss => await adapter.PlaceStopLossOrderAsync(
                         order.Symbol, order.Side, order.Quantity, order.StopPrice ?? 0m, ct).ConfigureAwait(false),
 
-                    _ => await _tradeClient.PlaceMarketOrderAsync(
+                    _ => await adapter.PlaceMarketOrderAsync(
                         order.Symbol, order.Side, order.Quantity, ct).ConfigureAwait(false)
                 };
 
@@ -101,16 +102,12 @@ public sealed class OrderExecutor : IOrderExecutor
 
         _logger.LogInformation("Cancelling order {ExchangeOrderId} for {Symbol}", exchangeOrderId, symbol);
 
-        var result = await _tradeClient.CancelOrderAsync(exchangeOrderId, symbol, ct).ConfigureAwait(false);
+        var result = await _adapterFactory.Current.CancelOrderAsync(exchangeOrderId, symbol, ct).ConfigureAwait(false);
 
         if (result.Success)
-        {
             _logger.LogInformation("Order {ExchangeOrderId} cancelled successfully", exchangeOrderId);
-        }
         else
-        {
             _logger.LogWarning("Failed to cancel order {ExchangeOrderId}: {Error}", exchangeOrderId, result.ErrorMessage);
-        }
 
         return result;
     }
@@ -122,16 +119,12 @@ public sealed class OrderExecutor : IOrderExecutor
 
         _logger.LogDebug("Querying status of order {ExchangeOrderId} for {Symbol}", exchangeOrderId, symbol);
 
-        var result = await _tradeClient.QueryOrderAsync(exchangeOrderId, symbol, ct).ConfigureAwait(false);
+        var result = await _adapterFactory.Current.QueryOrderAsync(exchangeOrderId, symbol, ct).ConfigureAwait(false);
 
         if (result.Success)
-        {
             _logger.LogDebug("Order {ExchangeOrderId} status: {Status}", exchangeOrderId, result.ExecutedOrder?.Status);
-        }
         else
-        {
             _logger.LogWarning("Failed to query order {ExchangeOrderId}: {Error}", exchangeOrderId, result.ErrorMessage);
-        }
 
         return result;
     }

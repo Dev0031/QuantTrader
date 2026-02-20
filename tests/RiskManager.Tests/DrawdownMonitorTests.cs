@@ -3,6 +3,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Moq;
 using QuantTrader.Common.Configuration;
+using QuantTrader.Common.Services;
 using QuantTrader.Infrastructure.Redis;
 using QuantTrader.RiskManager.Services;
 
@@ -27,7 +28,7 @@ public class DrawdownMonitorTests
 
         var options = Options.Create(_settings);
         var logger = Mock.Of<ILogger<DrawdownMonitor>>();
-        _monitor = new DrawdownMonitor(_cacheMock.Object, options, logger);
+        _monitor = new DrawdownMonitor(_cacheMock.Object, options, new FakeTimeProvider(), logger);
     }
 
     [Fact]

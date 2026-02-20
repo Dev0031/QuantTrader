@@ -4,6 +4,7 @@ using QuantTrader.Common.Configuration;
 using QuantTrader.Common.Enums;
 using QuantTrader.Common.Models;
 using QuantTrader.Infrastructure.Redis;
+using QuantTrader.Infrastructure.Resilience;
 using QuantTrader.RiskManager.Models;
 
 namespace QuantTrader.RiskManager.Services;
@@ -15,6 +16,7 @@ public sealed class RiskEvaluator : IRiskEvaluator
     private readonly IDrawdownMonitor _drawdownMonitor;
     private readonly IKillSwitchManager _killSwitchManager;
     private readonly IRedisCacheService _cache;
+    private readonly CircuitBreakerState? _circuitState;
     private readonly RiskSettings _settings;
     private readonly ILogger<RiskEvaluator> _logger;
 
@@ -24,7 +26,8 @@ public sealed class RiskEvaluator : IRiskEvaluator
         IKillSwitchManager killSwitchManager,
         IRedisCacheService cache,
         IOptions<RiskSettings> settings,
-        ILogger<RiskEvaluator> logger)
+        ILogger<RiskEvaluator> logger,
+        CircuitBreakerState? circuitState = null)
     {
         _positionSizer = positionSizer ?? throw new ArgumentNullException(nameof(positionSizer));
         _drawdownMonitor = drawdownMonitor ?? throw new ArgumentNullException(nameof(drawdownMonitor));
@@ -32,6 +35,7 @@ public sealed class RiskEvaluator : IRiskEvaluator
         _cache = cache ?? throw new ArgumentNullException(nameof(cache));
         _settings = settings?.Value ?? throw new ArgumentNullException(nameof(settings));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+        _circuitState = circuitState; // optional; null means no circuit awareness
     }
 
     public async Task<RiskEvaluationResult> EvaluateSignalAsync(TradeSignal signal, CancellationToken ct = default)
@@ -59,6 +63,24 @@ public sealed class RiskEvaluator : IRiskEvaluator
         if (_drawdownMonitor.IsKillSwitchTriggered)
         {
             return Reject("Drawdown limit exceeded. Trading suspended.", metadata);
+        }
+
+        // Check 2b: Redis circuit open — MAXIMUM RESTRICTION.
+        // When the cache is unavailable we cannot verify portfolio state.
+        // Reject ALL new entry signals. Only allow position-closing trades.
+        if (_circuitState?.IsRedisOpen == true)
+        {
+            var isClosingTrade = signal.Action is TradeAction.CloseLong or TradeAction.CloseShort;
+            if (!isClosingTrade)
+            {
+                _logger.LogCritical(
+                    "REDIS CIRCUIT OPEN — rejecting new entry signal for {Symbol}. " +
+                    "Only position-closing trades allowed while cache is unavailable.", signal.Symbol);
+                return Reject("Redis circuit open. New entry signals rejected until cache recovers.", metadata);
+            }
+
+            _logger.LogWarning(
+                "Redis circuit open but allowing closing trade for {Symbol} (position protection).", signal.Symbol);
         }
 
         // Check 3: Stop-loss presence
