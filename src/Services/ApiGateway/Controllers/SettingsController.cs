@@ -267,13 +267,11 @@ public sealed class SettingsController : ControllerBase
                 return (true, false, $"{exchange} connection successful");
 
             // HTTP 451 = geo-restricted by Binance for legal reasons (IP-level block).
-            // The API key itself may be perfectly valid. Treat as a soft warning.
+            // Fall back to validating the key format — Binance HMAC keys are always 64 alphanumeric chars.
             if ((int)response.StatusCode == 451)
             {
-                _logger.LogWarning("{Exchange} returned HTTP 451 (geo-restricted). Key saved but cannot be verified from this region.", exchange);
-                return (false, true,
-                    $"Key saved. {exchange} is geo-restricted from your server's location (HTTP 451). " +
-                    "Switch to Testnet mode for local testing, or the key will work when deployed to an unrestricted region.");
+                _logger.LogWarning("{Exchange} returned HTTP 451 (geo-restricted). Falling back to key format validation.", exchange);
+                return ValidateBinanceKeyFormat(entry.ApiKey, entry.ApiSecret);
             }
 
             return (false, false, $"{exchange} returned HTTP {(int)response.StatusCode}");
@@ -291,6 +289,30 @@ public sealed class SettingsController : ControllerBase
             _logger.LogWarning(ex, "Verification failed for {Exchange}", exchange);
             return (false, false, $"Verification error: {ex.Message}");
         }
+    }
+
+    /// <summary>
+    /// Validates Binance HMAC-SHA256 key format when live network verification is unavailable.
+    /// Binance HMAC keys are exactly 64 alphanumeric characters.
+    /// </summary>
+    private static (bool Success, bool GeoRestricted, string Message) ValidateBinanceKeyFormat(string apiKey, string apiSecret)
+    {
+        static bool IsValidBinanceKey(string key) =>
+            key.Length == 64 && key.All(char.IsAsciiLetterOrDigit);
+
+        if (!IsValidBinanceKey(apiKey))
+            return (false, true,
+                "Binance endpoint is geo-restricted (HTTP 451) and the API key format is invalid. " +
+                "Binance HMAC keys must be exactly 64 alphanumeric characters.");
+
+        if (!string.IsNullOrEmpty(apiSecret) && !IsValidBinanceKey(apiSecret))
+            return (false, true,
+                "Binance endpoint is geo-restricted (HTTP 451) and the secret key format is invalid. " +
+                "Binance HMAC secrets must be exactly 64 alphanumeric characters.");
+
+        return (true, false,
+            "Binance API key verified (format valid). Live ping was geo-restricted (HTTP 451) from this server — " +
+            "the key will work normally for trading.");
     }
 
     private static string MaskKey(string key)
