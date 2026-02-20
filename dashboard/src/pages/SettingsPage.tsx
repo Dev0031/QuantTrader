@@ -39,7 +39,7 @@ const RATE_LIMITS: Record<string, string> = {
 
 const SettingsPage: React.FC = () => {
   const { data: providers, isLoading: providersLoading } = useApiProviders();
-  useExchangeSettings(); // keep query warm for provider cards
+  const { data: exchangeSettings } = useExchangeSettings();
   const { data: integrations } = useIntegrationStatus();
   const saveSettings = useSaveExchangeSettings();
   const deleteSettings = useDeleteExchangeSettings();
@@ -181,6 +181,13 @@ const SettingsPage: React.FC = () => {
               rateLimit={RATE_LIMITS[provider.name]}
               onConfigure={() => {
                 setExchange(provider.name);
+                const existing = exchangeSettings?.find(
+                  (s) => s.exchange.toLowerCase() === provider.name.toLowerCase()
+                );
+                setTestnet(existing ? existing.useTestnet : true);
+                setApiKey("");
+                setApiSecret("");
+                setVerifyResult(null);
                 setShowAddForm(true);
               }}
               onVerify={() => handleVerify(provider.name)}
@@ -270,17 +277,24 @@ const SettingsPage: React.FC = () => {
             )}
 
             {selectedProvider?.supportsTestnet && (
-              <div className="flex items-center gap-3">
-                <input
-                  type="checkbox"
-                  id="testnet"
-                  checked={testnet}
-                  onChange={(e) => setTestnet(e.target.checked)}
-                  className="rounded border-gray-600 bg-gray-800 text-accent focus:ring-accent"
-                />
-                <label htmlFor="testnet" className="text-sm text-gray-300">
-                  Use Testnet (Paper Trading)
-                </label>
+              <div className="space-y-2">
+                <div className="flex items-center gap-3">
+                  <input
+                    type="checkbox"
+                    id="testnet"
+                    checked={testnet}
+                    onChange={(e) => setTestnet(e.target.checked)}
+                    className="rounded border-gray-600 bg-gray-800 text-accent focus:ring-accent"
+                  />
+                  <label htmlFor="testnet" className="text-sm text-gray-300">
+                    Use Testnet (Paper Trading)
+                  </label>
+                </div>
+                {testnet && exchange === "Binance" && (
+                  <p className="text-xs text-amber-400/80 bg-amber-400/5 border border-amber-400/20 rounded-lg px-3 py-2">
+                    Use keys from <span className="font-mono">testnet.binance.vision</span> — not your real Binance keys. Testnet bypasses geo-restrictions.
+                  </p>
+                )}
               </div>
             )}
 
