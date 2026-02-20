@@ -1,28 +1,17 @@
 using System.Net;
 using FluentAssertions;
-using Microsoft.AspNetCore.Mvc.Testing;
-using Microsoft.Extensions.DependencyInjection;
-using QuantTrader.Infrastructure.Redis;
-using QuantTrader.TestInfrastructure.Helpers;
+using Xunit;
 
 namespace QuantTrader.ApiGateway.Tests.Controllers;
 
-public sealed class MarketDataControllerTests : IClassFixture<WebApplicationFactory<Program>>
+[Collection("ApiGateway")]
+public sealed class MarketDataControllerTests
 {
     private readonly HttpClient _client;
-    private readonly FakeRedisCacheService _fakeRedis = new();
 
-    public MarketDataControllerTests(WebApplicationFactory<Program> factory)
+    public MarketDataControllerTests(ApiGatewayFixture fixture)
     {
-        _client = factory.WithWebHostBuilder(builder =>
-        {
-            builder.ConfigureServices(services =>
-            {
-                var descriptor = services.SingleOrDefault(d => d.ServiceType == typeof(IRedisCacheService));
-                if (descriptor is not null) services.Remove(descriptor);
-                services.AddSingleton<IRedisCacheService>(_fakeRedis);
-            });
-        }).CreateClient();
+        _client = fixture.CreateClient();
     }
 
     [Fact]

@@ -1,32 +1,22 @@
 using System.Net;
 using System.Net.Http.Json;
 using FluentAssertions;
-using Microsoft.AspNetCore.Mvc.Testing;
-using Microsoft.Extensions.DependencyInjection;
-using Moq;
 using QuantTrader.ApiGateway.DTOs;
-using QuantTrader.Infrastructure.Redis;
-using QuantTrader.TestInfrastructure.Helpers;
+using Xunit;
 
 namespace QuantTrader.ApiGateway.Tests.Controllers;
 
-public sealed class SettingsControllerTests : IClassFixture<WebApplicationFactory<Program>>
+[Collection("ApiGateway")]
+public sealed class SettingsControllerTests
 {
     private readonly HttpClient _client;
-    private readonly FakeRedisCacheService _fakeRedis = new();
+    private readonly ApiGatewayFixture _fixture;
 
-    public SettingsControllerTests(WebApplicationFactory<Program> factory)
+    public SettingsControllerTests(ApiGatewayFixture fixture)
     {
-        _client = factory.WithWebHostBuilder(builder =>
-        {
-            builder.ConfigureServices(services =>
-            {
-                // Replace real Redis with our fake
-                var descriptor = services.SingleOrDefault(d => d.ServiceType == typeof(IRedisCacheService));
-                if (descriptor is not null) services.Remove(descriptor);
-                services.AddSingleton<IRedisCacheService>(_fakeRedis);
-            });
-        }).CreateClient();
+        _fixture = fixture;
+        _fixture.Redis.Clear();   // fresh slate for each test
+        _client = fixture.CreateClient();
     }
 
     [Fact]
@@ -84,6 +74,7 @@ public sealed class SettingsControllerTests : IClassFixture<WebApplicationFactor
     [Fact]
     public async Task DeleteExchangeSettings_WhenNotFound_Returns404()
     {
+        // Redis is cleared in constructor, so no exchange is configured
         var response = await _client.DeleteAsync("/api/settings/exchanges/Binance");
         response.StatusCode.Should().Be(HttpStatusCode.NotFound);
     }

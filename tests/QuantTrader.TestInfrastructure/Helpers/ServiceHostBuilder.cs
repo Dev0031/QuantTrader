@@ -66,6 +66,8 @@ public sealed class FakeRedisCacheService : IRedisCacheService
 {
     private readonly Dictionary<string, string> _store = new();
 
+    public void Clear() => _store.Clear();
+
     public Task<T?> GetAsync<T>(string key, CancellationToken ct = default) where T : class
     {
         if (_store.TryGetValue(key, out var json))
