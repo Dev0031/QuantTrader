@@ -1,44 +1,44 @@
+using System.Net.WebSockets;
+using System.Text.Json;
 using Microsoft.Extensions.Options;
+using QuantTrader.Common.Configuration;
 using QuantTrader.Common.Events;
 using QuantTrader.Common.Models;
-using QuantTrader.DataIngestion.Providers;
 using QuantTrader.DataIngestion.Services;
+using Websocket.Client;
 
 namespace QuantTrader.DataIngestion.Workers;
 
 /// <summary>
-/// Background worker that orchestrates real-time market data streaming.
-/// Delegates the actual WebSocket/REST work to <see cref="IMarketDataProvider"/>.
-/// Supports degradation cascade: WebSocket → REST polling → stale data.
+/// Background worker that maintains a persistent WebSocket connection to the Binance exchange,
+/// subscribing to real-time trade streams for configured symbols. Reconnects automatically
+/// with exponential backoff on disconnection.
 /// </summary>
 public sealed class BinanceWebSocketWorker : BackgroundService
 {
-    private const int MaxWebSocketFailures = 5;
+    private readonly ILogger<BinanceWebSocketWorker> _logger;
+    private readonly IEventBus _eventBus;
+    private readonly IRedisCacheService _redisCache;
+    private readonly IDataNormalizerService _normalizer;
+    private readonly BinanceSettings _binanceSettings;
+    private readonly List<string> _symbols;
+
     private const int MaxReconnectDelaySeconds = 120;
     private const int InitialReconnectDelaySeconds = 1;
 
-    private readonly ILogger<BinanceWebSocketWorker> _logger;
-    private readonly IMarketDataProvider _primaryProvider;      // WebSocket
-    private readonly IMarketDataProvider _fallbackProvider;     // REST polling
-    private readonly IEventBus _eventBus;
-    private readonly IRedisCacheService _redisCache;
-    private readonly List<string> _symbols;
-
-    private int _consecutiveFailures;
-
     public BinanceWebSocketWorker(
         ILogger<BinanceWebSocketWorker> logger,
-        IMarketDataProvider primaryProvider,
-        IMarketDataProvider fallbackProvider,
         IEventBus eventBus,
         IRedisCacheService redisCache,
+        IDataNormalizerService normalizer,
+        IOptions<BinanceSettings> binanceSettings,
         IOptions<SymbolsOptions> symbolsOptions)
     {
         _logger = logger;
-        _primaryProvider = primaryProvider;
-        _fallbackProvider = fallbackProvider;
         _eventBus = eventBus;
         _redisCache = redisCache;
+        _normalizer = normalizer;
+        _binanceSettings = binanceSettings.Value;
         _symbols = symbolsOptions.Value.Symbols;
     }
 
@@ -46,7 +46,7 @@ public sealed class BinanceWebSocketWorker : BackgroundService
     {
         if (_symbols.Count == 0)
         {
-            _logger.LogWarning("No symbols configured. BinanceWebSocketWorker will not start.");
+            _logger.LogWarning("No symbols configured for WebSocket streaming. Worker will not start");
             return;
         }
 
@@ -54,91 +54,97 @@ public sealed class BinanceWebSocketWorker : BackgroundService
 
         while (!stoppingToken.IsCancellationRequested)
         {
-            // Choose provider based on failure count
-            var activeProvider = _consecutiveFailures >= MaxWebSocketFailures
-                ? _fallbackProvider
-                : _primaryProvider;
-
-            if (activeProvider == _fallbackProvider && _consecutiveFailures == MaxWebSocketFailures)
-            {
-                _logger.LogWarning(
-                    "WebSocket failed {Count} times. Switching to REST polling fallback.",
-                    _consecutiveFailures);
-
-                await PublishDegradedHealthAsync("WebSocket", stoppingToken);
-            }
-
             try
             {
-                await activeProvider.StreamAsync(_symbols, OnTickAsync, stoppingToken);
-                // Clean exit (cancellation requested) — reset
-                _consecutiveFailures = 0;
+                await RunWebSocketAsync(stoppingToken);
+                // If we exit cleanly, reset delay
                 reconnectDelay = InitialReconnectDelaySeconds;
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
             {
-                _logger.LogInformation("BinanceWebSocketWorker shutting down gracefully.");
+                _logger.LogInformation("BinanceWebSocketWorker shutting down gracefully");
                 break;
             }
             catch (Exception ex)
             {
-                _consecutiveFailures++;
-                _logger.LogError(ex,
-                    "Market data provider '{Provider}' failed (failure #{Count}). Reconnecting in {Delay}s.",
-                    activeProvider.Name, _consecutiveFailures, reconnectDelay);
-
-                if (_consecutiveFailures > MaxWebSocketFailures * 2)
-                {
-                    // Both WebSocket and REST are failing — enter stale data mode
-                    await PublishDegradedHealthAsync("MarketData", stoppingToken);
-                }
-
-                try
-                {
-                    await Task.Delay(TimeSpan.FromSeconds(reconnectDelay), stoppingToken);
-                    reconnectDelay = Math.Min(reconnectDelay * 2, MaxReconnectDelaySeconds);
-                }
-                catch (OperationCanceledException)
-                {
-                    break;
-                }
+                _logger.LogError(ex, "WebSocket connection failed. Reconnecting in {Delay}s", reconnectDelay);
+                await Task.Delay(TimeSpan.FromSeconds(reconnectDelay), stoppingToken);
+                reconnectDelay = Math.Min(reconnectDelay * 2, MaxReconnectDelaySeconds);
             }
         }
     }
 
-    private async Task OnTickAsync(MarketTick tick, CancellationToken ct)
+    private async Task RunWebSocketAsync(CancellationToken stoppingToken)
     {
-        _consecutiveFailures = 0; // Reset on successful tick
+        // Build combined stream URL: wss://testnet.binance.vision/ws/btcusdt@trade/ethusdt@trade/...
+        var streams = string.Join("/", _symbols.Select(s => $"{s.ToLowerInvariant()}@trade"));
+        var wsUrl = new Uri($"{_binanceSettings.WebSocketUrl}/{streams}");
 
-        var @event = new MarketTickReceivedEvent(
-            Tick: tick,
-            CorrelationId: Guid.NewGuid().ToString("N"),
-            Timestamp: DateTimeOffset.UtcNow,
-            Source: "BinanceWebSocket");
+        _logger.LogInformation("Connecting to Binance WebSocket at {Url}", wsUrl);
 
-        _eventBus.Publish(@event);
+        using var client = new WebsocketClient(wsUrl)
+        {
+            ReconnectTimeout = TimeSpan.FromSeconds(30),
+            ErrorReconnectTimeout = TimeSpan.FromSeconds(30)
+        };
 
-        _ = _redisCache.SetLatestPriceAsync(tick.Symbol, tick.Price);
-    }
+        client.ReconnectionHappened.Subscribe(info =>
+            _logger.LogInformation("WebSocket reconnection occurred: {Type}", info.Type));
 
-    private async Task PublishDegradedHealthAsync(string component, CancellationToken ct)
-    {
+        client.DisconnectionHappened.Subscribe(info =>
+            _logger.LogWarning("WebSocket disconnected: {Type} {CloseStatus}", info.Type, info.CloseStatus));
+
+        client.MessageReceived.Subscribe(msg => ProcessMessage(msg.Text));
+
+        await client.Start();
+
+        _logger.LogInformation("Binance WebSocket connected. Streaming {Count} symbols: {Symbols}",
+            _symbols.Count, string.Join(", ", _symbols));
+
+        // Keep alive until cancellation
         try
         {
-            var healthEvent = new SystemHealthEvent(
-                Service: "DataIngestion",
-                Component: component,
-                Status: Common.Events.HealthStatus.Degraded,
-                Message: $"DataIngestion {component} is degraded. Fallback mode active.",
-                CorrelationId: Guid.NewGuid().ToString(),
-                Timestamp: DateTimeOffset.UtcNow,
-                Source: nameof(BinanceWebSocketWorker));
+            await Task.Delay(Timeout.Infinite, stoppingToken);
+        }
+        catch (OperationCanceledException)
+        {
+            // Expected on shutdown
+        }
 
-            _eventBus.Publish(healthEvent);
+        await client.Stop(WebSocketCloseStatus.NormalClosure, "Service shutting down");
+        _logger.LogInformation("Binance WebSocket disconnected cleanly");
+    }
+
+    private void ProcessMessage(string? message)
+    {
+        if (string.IsNullOrWhiteSpace(message))
+            return;
+
+        try
+        {
+            var tick = _normalizer.NormalizeBinanceTrade(message);
+            if (tick is null)
+                return;
+
+            // Publish event
+            var @event = new MarketTickReceivedEvent(
+                Tick: tick,
+                CorrelationId: Guid.NewGuid().ToString("N"),
+                Timestamp: DateTimeOffset.UtcNow,
+                Source: "BinanceWebSocket");
+
+            _eventBus.Publish(@event);
+
+            // Cache latest price in Redis (fire-and-forget with logging)
+            _ = _redisCache.SetLatestPriceAsync(tick.Symbol, tick.Price);
+        }
+        catch (JsonException ex)
+        {
+            _logger.LogWarning(ex, "Failed to parse WebSocket message");
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Failed to publish degraded health event");
+            _logger.LogError(ex, "Error processing WebSocket message");
         }
     }
 }
