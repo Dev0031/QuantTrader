@@ -166,6 +166,7 @@ export interface VerificationResult {
   status: string;
   message: string;
   latencyMs: number;
+  geoRestricted?: boolean;
 }
 
 export interface IntegrationStatus {

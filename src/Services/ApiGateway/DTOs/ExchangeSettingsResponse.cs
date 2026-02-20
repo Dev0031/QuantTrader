@@ -43,7 +43,8 @@ public sealed record VerificationResultResponse(
     bool Success,
     string Status,
     string Message,
-    long LatencyMs);
+    long LatencyMs,
+    bool GeoRestricted = false);
 
 /// <summary>Health status of a data integration.</summary>
 public sealed record IntegrationStatusResponse(

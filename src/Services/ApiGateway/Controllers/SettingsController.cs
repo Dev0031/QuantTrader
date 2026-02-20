@@ -190,12 +190,14 @@ public sealed class SettingsController : ControllerBase
             return NotFound(new { message = $"No settings found for {exchange}" });
 
         var sw = Stopwatch.StartNew();
-        var (success, message) = await VerifyProviderAsync(exchange, entry, ct);
+        var (success, geoRestricted, message) = await VerifyProviderAsync(exchange, entry, ct);
         sw.Stop();
 
-        if (success)
+        if (success || geoRestricted)
         {
-            var updated = entry with { Status = "Verified", LastVerified = DateTimeOffset.UtcNow };
+            // Geo-restricted: key can't be verified remotely but is valid; keep as "Saved"
+            var newStatus = success ? "Verified" : "Saved";
+            var updated = entry with { Status = newStatus, LastVerified = DateTimeOffset.UtcNow };
             var idx = settings!.FindIndex(s =>
                 string.Equals(s.Exchange, exchange, StringComparison.OrdinalIgnoreCase));
             settings[idx] = updated;
@@ -204,9 +206,10 @@ public sealed class SettingsController : ControllerBase
 
         return Ok(new VerificationResultResponse(
             Success: success,
-            Status: success ? "Verified" : "Failed",
+            Status: success ? "Verified" : (geoRestricted ? "Saved" : "Failed"),
             Message: message,
-            LatencyMs: sw.ElapsedMilliseconds));
+            LatencyMs: sw.ElapsedMilliseconds,
+            GeoRestricted: geoRestricted));
     }
 
     /// <summary>Gets the status of all required API keys for the system.</summary>
@@ -232,7 +235,7 @@ public sealed class SettingsController : ControllerBase
         return Ok(result);
     }
 
-    private async Task<(bool Success, string Message)> VerifyProviderAsync(
+    private async Task<(bool Success, bool GeoRestricted, string Message)> VerifyProviderAsync(
         string exchange, StoredExchangeSettings entry, CancellationToken ct)
     {
         try
@@ -256,27 +259,37 @@ public sealed class SettingsController : ControllerBase
             };
 
             if (url is null)
-                return (false, $"Verification not supported for {exchange}");
+                return (false, false, $"Verification not supported for {exchange}");
 
             var response = await client.GetAsync(url, ct);
 
             if (response.IsSuccessStatusCode)
-                return (true, $"{exchange} connection successful");
+                return (true, false, $"{exchange} connection successful");
 
-            return (false, $"{exchange} returned HTTP {(int)response.StatusCode}");
+            // HTTP 451 = geo-restricted by Binance for legal reasons (IP-level block).
+            // The API key itself may be perfectly valid. Treat as a soft warning.
+            if ((int)response.StatusCode == 451)
+            {
+                _logger.LogWarning("{Exchange} returned HTTP 451 (geo-restricted). Key saved but cannot be verified from this region.", exchange);
+                return (false, true,
+                    $"Key saved. {exchange} is geo-restricted from your server's location (HTTP 451). " +
+                    "Switch to Testnet mode for local testing, or the key will work when deployed to an unrestricted region.");
+            }
+
+            return (false, false, $"{exchange} returned HTTP {(int)response.StatusCode}");
         }
         catch (TaskCanceledException)
         {
-            return (false, $"{exchange} connection timed out (>10s)");
+            return (false, false, $"{exchange} connection timed out (>10s)");
         }
         catch (HttpRequestException ex)
         {
-            return (false, $"{exchange} connection failed: {ex.Message}");
+            return (false, false, $"{exchange} connection failed: {ex.Message}");
         }
         catch (Exception ex)
         {
             _logger.LogWarning(ex, "Verification failed for {Exchange}", exchange);
-            return (false, $"Verification error: {ex.Message}");
+            return (false, false, $"Verification error: {ex.Message}");
         }
     }
 

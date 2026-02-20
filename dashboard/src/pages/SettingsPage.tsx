@@ -9,6 +9,7 @@ import {
   CheckCircle,
   XCircle,
   AlertCircle,
+  AlertTriangle,
   RefreshCw,
   Plus,
   Shield,
@@ -96,6 +97,8 @@ const SettingsPage: React.FC = () => {
       const result = await verifySettings.mutateAsync(exchangeName);
       if (result.success) {
         toast("success", `${exchangeName} verified (${result.latencyMs}ms)`);
+      } else if (result.geoRestricted) {
+        toast("warning", `${exchangeName}: Key saved. Geo-restricted — switch to Testnet for local testing.`);
       } else {
         toast("error", `${exchangeName}: ${result.message}`);
       }
@@ -284,16 +287,24 @@ const SettingsPage: React.FC = () => {
             {/* Verify result inline */}
             {verifyResult && (
               <div
-                className={`p-3 rounded-lg flex items-center gap-2 text-sm ${
+                className={`p-3 rounded-lg flex items-start gap-2 text-sm ${
                   verifyResult.success
                     ? "bg-green-400/10 text-green-400"
+                    : verifyResult.geoRestricted
+                    ? "bg-amber-400/10 text-amber-400"
                     : "bg-red-400/10 text-red-400"
                 }`}
               >
-                {verifyResult.success ? <CheckCircle className="w-4 h-4" /> : <XCircle className="w-4 h-4" />}
-                {verifyResult.message}
+                {verifyResult.success ? (
+                  <CheckCircle className="w-4 h-4 mt-0.5 shrink-0" />
+                ) : verifyResult.geoRestricted ? (
+                  <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0" />
+                ) : (
+                  <XCircle className="w-4 h-4 mt-0.5 shrink-0" />
+                )}
+                <span className="flex-1">{verifyResult.message}</span>
                 {verifyResult.latencyMs > 0 && (
-                  <span className="text-xs opacity-60 ml-auto">{verifyResult.latencyMs}ms</span>
+                  <span className="text-xs opacity-60 shrink-0">{verifyResult.latencyMs}ms</span>
                 )}
               </div>
             )}
