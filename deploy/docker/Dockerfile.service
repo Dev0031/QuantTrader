@@ -26,6 +26,8 @@ COPY tests/RiskManager.Tests/RiskManager.Tests.csproj tests/RiskManager.Tests/
 COPY tests/ExecutionEngine.Tests/ExecutionEngine.Tests.csproj tests/ExecutionEngine.Tests/
 COPY tests/Indicators.Tests/Indicators.Tests.csproj tests/Indicators.Tests/
 COPY tests/Integration.Tests/Integration.Tests.csproj tests/Integration.Tests/
+COPY tests/QuantTrader.TestInfrastructure/QuantTrader.TestInfrastructure.csproj tests/QuantTrader.TestInfrastructure/
+COPY tests/ApiGateway.Tests/ApiGateway.Tests.csproj tests/ApiGateway.Tests/
 
 # Restore dependencies (cached unless csproj files change)
 RUN dotnet restore
